@@ -165,10 +165,24 @@ The return value is ignored.")
   ;; restore, and also to call the wrapped hook.
   nil)
 
+(define-condition insane-state (simple-error)
+  ())
+
 (defun trace-macroexpand-hook (macro-function macro-form environment)
   ;; Trace macros: this is installed as the value of *macroexpand-hook*
   (unless *wrapped-macroexpand-hook*
-    (error "No wrapped *MACROEXPAND-HOOK*?"))
+    (restart-case
+        (error 'insane-state
+               :format-control "No wrapped *MACROEXPAND-HOOK*?")
+      (continue ()
+        :report "Install FUNCALL as the wrapped hook"
+        (setq *wrapped-macroexpand-hook* 'funcall))
+      (store-value (v)
+        :report "Set the wrapped hook to a value"
+        :interactive (lambda ()
+                       (format *query-io* "~&Value for wrapped hook: ")
+                       (list (read *query-io*)))
+        (setq *wrapped-macroexpand-hook* v))))
   (if (trace-macroexpand-trace-p macro-function macro-form environment)
       (let ((expanded-form (funcall *wrapped-macroexpand-hook*
                                     macro-function macro-form environment)))
@@ -184,6 +198,41 @@ The return value is ignored.")
     (funcall *wrapped-macroexpand-hook*
              macro-function macro-form environment)))
 
+(defvar *should-be-tracing-p*
+  ;; This is what we think the state is
+  nil)
+
+(defun state-sanity-check ()
+  ;; Do some kind of sanity check, returning OK and recovered.  T and
+  ;; NIL is fine, NIL and T means we may be fine anything else should
+  ;; never happen
+  (if *should-be-tracing-p*
+      (unless *wrapped-macroexpand-hook*
+        (restart-case
+            (error 'insane-state
+                   :format-control "Tracing on but no wrapped *MACROEXPAND-HOOK*?") ;
+          (continue ()
+            :report "Install FUNCALL as the wrapped hook"
+            (setq *wrapped-macroexpand-hook* 'funcall)
+            (values nil t))
+          (store-value (v)
+            :report "Set the wrapped hook to a value"
+            :interactive (lambda ()
+                           (format *query-io* "~&Value for wrapped hook: ")
+                           (list (read *query-io*)))
+            (setq *wrapped-macroexpand-hook* v)
+            (values nil t))))
+    (when *wrapped-macroexpand-hook*
+      (restart-case
+          (error
+           'insane-state
+           :format-control "Tracing off but there is a wrapped *MACROEXPAND-HOOK*?")
+        (continue ()
+          :report "Set the wrapped hook to NIL"
+          (setf *wrapped-macroexpand-hook* nil)
+          (values nil t)))))
+  (values t nil))
+
 (defun trace-macroexpand (&optional (tracep t))
   "Trace or untrace macroexpansion.
 
@@ -191,17 +240,31 @@ If called with no argument, or an argument which is true, ensure that
 macroexpansion is on.  Otherwise ensure it is off.
 
 Return the previous state."
-  (let ((currently-tracing (if *wrapped-macroexpand-hook* t nil)))
+  (multiple-value-bind (ok recovered) (state-sanity-check)
+    (when (not ok)
+      (if recovered
+          (warn "Perhaps recovered from an insane state")
+        (error 'insane-state
+               :format-control "Not OK and not recovered: this should not happen"))))
+  (let ((currently-tracing *should-be-tracing-p*))
     (cond ((and tracep (not currently-tracing))
            (setf *wrapped-macroexpand-hook* *macroexpand-hook*
-                 *macroexpand-hook* #'trace-macroexpand-hook))
+                 *macroexpand-hook* #'trace-macroexpand-hook
+                 *should-be-tracing-p* t))
           ((and (not tracep) currently-tracing)
            (setf *macroexpand-hook* *wrapped-macroexpand-hook*
-                 *wrapped-macroexpand-hook* nil)))
+                 *wrapped-macroexpand-hook* nil
+                 *should-be-tracing-p* nil)))
     currently-tracing))
 
 (defun macroexpand-traced-p ()
   "Is macroexpansion currently traced?"
+  (multiple-value-bind (ok recovered) (state-sanity-check)
+    (when (not ok)
+      (if recovered
+          (warn "Perhaps recovered from an insane state")
+        (error 'insane-state
+               :format-control "Not OK and not recovered: this should not happen"))))
   (if *wrapped-macroexpand-hook* t nil))
 
 (defun call/macroexpand-tracing (f &optional (state t))
@@ -210,7 +273,8 @@ Return the previous state."
 This is useful for compiling files, say, where you want to see what
 happens."
   (let ((*macroexpand-hook* *macroexpand-hook*)
-        (*wrapped-macroexpand-hook* *wrapped-macroexpand-hook*))
+        (*wrapped-macroexpand-hook* *wrapped-macroexpand-hook*)
+        (*should-be-tracing-p* *should-be-tracing-p*))
     (trace-macroexpand state)
     (funcall f)))
 

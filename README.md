@@ -731,7 +731,7 @@ CL-USER 52 > (trace-macro)
 ```
 
 ### How it works, caveats
-All `trace-macroexpand` does is to install a hook on `*macroexpand-hook` and use this to drive the tracing.  It is careful to call any preexisting hook as well, so it does not interfere with anything else.  However, don't unilaterally change `*macroexpand-hook*` while macro tracing is active: turn it off first, as things will become confused otherwise.
+All `trace-macroexpand` does is to install a hook on `*macroexpand-hook` and use this to drive the tracing.  It is careful to call any preexisting hook as well, so it does not interfere with anything else.  However, don't unilaterally change `*macroexpand-hook*` while macro tracing is active: turn it off first, as things will become confused otherwise.  If it detects bad states (for instance if tracing is off but the wrapped hook isn't `nil`, or if tracing seems to be on but the wrapped hook *is* `nil`) it will signal errors and there are restarts which may help recover.  But it's best to not get into these states.
 
 Tracing output goes to `*trace-output*`.
 
