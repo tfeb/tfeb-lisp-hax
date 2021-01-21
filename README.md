@@ -180,7 +180,7 @@ A long time ago I did some benchmarks of `wrapping-standard` and found no observ
 
 ## Applicative iteration: `iterate`
 I've always liked Scheme's named-`let` construct.  It's pretty easy to provide a shim around `labels` in CL which is syntactically the same, but since CL doesn't promise to turn tail calls into jumps, it may cause stack overflows.  When I wrote `iterate` I was still using, part of the time, a Symbolics LispM, and they *didn't* turn tail calls into jumps.  So I wrote this little hack which, if it knows that the implementation does not handle tail-call elimination, and if the name of the local function contains `loop` (in any case) will compile 'calls' to it as explicit jumps.  Otherwise it turns them into the obvious `labels` construct.
-
+  
 Well, that's what it used to do: the flag which controls whether it thinks an implementation supports tail-call elimination is now always set to true, which means it will always create correct code, even if that code may cause stack overflows on implementations which don't eliminate tail calls[^5].  The old code is still there in case anyone wants to look at it.
 
 There is a single macro: **`iterate`**[^6]:
@@ -418,7 +418,7 @@ then we would need to compare the list argument with `equal`, not `eql`:
 ```
 
 ### Notes
-`memoize` is old code: uI don't use it very much, it has had some silly bugs and may still have.  I've recently fixed it so it should understand `(setf x)` function names, but I have not tested those fixes very much.  Memoized functions are unlikely to be thread-safe.
+`memoize` is old code: I don't use it very much, it has had some silly bugs and may still have.  I've recently fixed it so it should understand `(setf x)` function names, but I have not tested those fixes very much.  Memoized functions are unlikely to be thread-safe.
 
 ### Package, module
 `memoize` lives in `org.tfeb.hax.memoize` and provides `:org.tfeb.hax.memoize`.
@@ -628,6 +628,9 @@ It's sometimes pretty useful to understand what's going on during macroexpansion
 In a package where my `collecting` and `with-collectors` macros are available (see above).
 
 ```lisp
+> (trace-macroexpand t)
+nil
+
 > (trace-macro collecting with-collectors)
 (collecting with-collectors)
 
@@ -735,9 +738,9 @@ Tracing output goes to `*trace-output*`.
 ### The interface
 The interface is fairly large, as there are a reasonable number of options, some of which can be controlled in various ways.
 
-**`trace-macroexpand`** turns macroexpansion tracing on or off, globally.  It has a single optional argument: if it is true (the default) it turns it on, if it is false it turns it off.  It returns the previous state.
+**`trace-macroexpand`** turns macroexpansion tracing on or off, globally.  It has a single optional argument: if it is true (the default) it turns it on, if it is false it turns it off.  It returns the previous state.  Compiling or loading `trace-macroexpand` will unilaterally force macroexpansion tracing off, to avoid problems with tracing happening as the code which does the tracing is being redefined.
 
-**`macroexpand-traced-p`** tells you if macroexpansion is off or on.
+**`macroexpand-traced-p`** tells you if macroexpansion is off or on.  Again, the initial state is always off.
 
 **`call/macroexpand-tracing`** calls a function with macroexpansion tracing on or off.  It's useful, for instance, for seeing what happens when you compile a file.  Its argument is a function of no arguments to call, and an optional second argument controls whether macroexpansion is on (the default) or off during the dynamic extent of the call.
 

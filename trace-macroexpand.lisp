@@ -309,7 +309,3 @@ Note this is a function, not a macro like UNTRACE-MACRO / UNTRACE"
          (mapcar #'canonicalise-package-designator
                  package-designators)
          :test #'equal)))
-
-(eval-when (:load-toplevel :execute)
-  ;; Turn macroexpansion tracing on when this is loaded
-  (trace-macroexpand t))
