@@ -3,7 +3,9 @@ This repo contains a collection of small Common Lisp hacks I've written over the
 
 ## General
 ### Modules
-Each of these hacks is an independent module: it lives in its own little package and is loadable standalone: if you just want one of them then you don't need to drag all the unrelated ones into your environment.  If you put them in the right place, then [`require-module`](https://github.com/tfeb/tfeb-lisp-tools#requiring-modules-with-searching-require-module "require-module") will find and load them for you: this is how I use them.
+Almost all of these hacks are independent modules: they live in their own little packages and are loadable standalone: if you just want one of them then you don't need to drag all the unrelated ones into your environment.  If you put them in the right place, then [`require-module`](https://github.com/tfeb/tfeb-lisp-tools#requiring-modules-with-searching-require-module "require-module") will find and load them for you: this is how I use them.  Exceptions are:
+
+- `binding`, which depends on `collecting` and `iterate`, and will try to use `require-module` to load them if they're not already known when it's compiled or loaded.
 
 The system itself provides `:org.tfeb.hax`: there is no `org.tfeb.hax` package however: each component lives in its own package with names like `org.tfeb.hax.*`.
 
@@ -884,6 +886,88 @@ counter
 
 ### Package, module
 `define-functions` lives in `org.tfeb.hax.define-functions` and provides `:org.tfeb.hax.define-functions`.
+
+## Local bindings: `binding`
+Different languages take different approaches to declaring – *binding* variables and functions locally in code.
+
+- CL requires `let`, `labels` &c, which is clear but involves extra indentation;
+- Scheme allows local use of `define` which does not involve indentation, but does not allow it everywhere;
+- Python allows local bindings anywhere but the scope is insane (bindings have function scope and are thus visible before they appear textually) and variable binding is conflated with assignment which is just a horrible idea:
+- some C compilers may allow variable declarations almost anywhere with their scope starting from the point of declaration and running to the end of the block – I am not sure what the standard supports however;
+- Racket allows `define` in many more places than Scheme with their scope running to the end of the appropriate block.
+
+Racket is pretty clear how what it does works:
+
+```lisp
+...
+(define foo ...)
+...
+```
+
+turns into
+
+```lisp
+...
+(letrec ([foo ...])
+  ...)
+```
+
+I thought it would be fun to implement a form which does this for CL, and that's what `binding` does.
+
+**`binding`** is a form, directly within whose body several special binding forms are available.  These forms are:
+
+- `bind` will bind local variables or functions, corresponding to `let*` or `labels` respectively;
+- `bind/values` will bind multiple values, corresponding to `multiple-value-bind`;
+- `bind/destructuring` corresponds to `destructuring-bind`.
+
+For `bind` the two cases are:
+
+- `(bind var val)` will bind `var` to `val`using `let*`;
+- `(bind (f ...) ...)` will create a local function `f` using `labels` (the function definition form is like Scheme's `(define (f ...) ...)` syntax).
+
+For `bind/values` there are also two cases:
+
+- `(bind/values (...) form)` corresponds to `(multiple-value-bind (...) form ...)`
+- `(bind-values (...) form ...)` corresponds to `(multiple-value-bind (...) (values form ...) ...)`.
+
+`bind/destructuring` doesn't have any variants.
+
+All of these forms are coalesced to create the minimum number of binding constructs in the generated code (this is why `bind` corresponds to `let*`), so:
+
+```lisp
+(binding
+  (print 1)
+  (bind x 1)
+  (bind y 2)
+  (print 2)
+  (bind (f1 v)
+    (+ x v))
+  (bind (f2 v)
+    (+ y (f1 v)))
+  (f2 1))
+```
+
+corresponds to
+
+```lisp
+(progn
+  (print 1)
+  (let* ((x 1) (y 2))
+    (print 2)
+    (labels ((f1 (v)
+               (+ x v))
+             (f2 (v)
+               (+ y (f1 v))))
+      (f2 1))))
+```
+
+and so on. `bind/values` and `bind/destructuring` are not coalesced as it makes no sense to do so.
+
+### Notes
+`bind` &c work *only* directly within `binding`: there is no code walker, intentionally so.  There are top-level definitions of `bind` &c as macros which signal errors at macroexpansion time.
+
+### Package, module, dependencies
+`binding` lives in `org.tfeb.hax.binding`and provides `:org.tfeb.hax.binding`.  `binding` depends on `collecting` and `iterate` at compile and run time.  If you load it as a module then, if you have [`require-module`](https://github.com/tfeb/tfeb-lisp-tools#requiring-modules-with-searching-require-module "require-module"), it will use that to try and load them if they're not there.  If it can't do that and they're not there you'll get a compile-time error.
 
 ----
 

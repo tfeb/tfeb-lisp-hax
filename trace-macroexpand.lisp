@@ -176,13 +176,13 @@ The return value is ignored.")
                :format-control "No wrapped *MACROEXPAND-HOOK*?")
       (continue ()
         :report "Install FUNCALL as the wrapped hook"
-        (setq *wrapped-macroexpand-hook* 'funcall))
+        (setf *wrapped-macroexpand-hook* 'funcall))
       (store-value (v)
         :report "Set the wrapped hook to a value"
         :interactive (lambda ()
                        (format *query-io* "~&Value for wrapped hook: ")
                        (list (read *query-io*)))
-        (setq *wrapped-macroexpand-hook* v))))
+        (setf *wrapped-macroexpand-hook* v))))
   (if (trace-macroexpand-trace-p macro-function macro-form environment)
       (let ((expanded-form (funcall *wrapped-macroexpand-hook*
                                     macro-function macro-form environment)))
@@ -213,14 +213,14 @@ The return value is ignored.")
                    :format-control "Tracing on but no wrapped *MACROEXPAND-HOOK*?") ;
           (continue ()
             :report "Install FUNCALL as the wrapped hook"
-            (setq *wrapped-macroexpand-hook* 'funcall)
+            (setf *wrapped-macroexpand-hook* 'funcall)
             (values nil t))
           (store-value (v)
             :report "Set the wrapped hook to a value"
             :interactive (lambda ()
                            (format *query-io* "~&Value for wrapped hook: ")
                            (list (read *query-io*)))
-            (setq *wrapped-macroexpand-hook* v)
+            (setf *wrapped-macroexpand-hook* v)
             (values nil t))))
     (when *wrapped-macroexpand-hook*
       (restart-case

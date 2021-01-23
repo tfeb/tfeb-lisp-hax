@@ -5,7 +5,7 @@
 
 (defsystem "org.tfeb.hax"
   :description "TFEB hax"
-  :version "1.0.0"
+  :version "1.1.0"
   :author "Tim Bradshaw"
   :license "MIT"
   :homepage "https://github.com/tfeb/tfeb-lisp-hax"
@@ -23,6 +23,8 @@
    (:file "comment-form")
    (:file "define-functions")
    (:file "trace-macroexpand")
+   (:file "binding"
+    :depends-on ("collecting" "iterate"))
    (:file "hax-cometh"
     :depends-on ("collecting" "wrapping-standard"
                  "iterate" "dynamic-state" "memoize"
