@@ -1,4 +1,4 @@
-# TFEB.ORG Lisp hax
+# [TFEB.ORG Lisp hax](https://github.com/tfeb/tfeb-lisp-hax "TFEB.org Lisp hax")
 This repo contains a collection of small Common Lisp hacks I've written over the last thirty-odd years[^1].  Some of them are genuinely useful, some of them are little more than toys written long ago to prove a point on `comp.lang.lisp`.  Although they are here bundled together into an ASDF system that's only for convenience: they're all independent of each other.  I will probably add more over time.
 
 ## General
@@ -968,6 +968,10 @@ and so on. `bind/values` and `bind/destructuring` are not coalesced as it makes 
 
 ### Package, module, dependencies
 `binding` lives in `org.tfeb.hax.binding`and provides `:org.tfeb.hax.binding`.  `binding` depends on `collecting` and `iterate` at compile and run time.  If you load it as a module then, if you have [`require-module`](https://github.com/tfeb/tfeb-lisp-tools#requiring-modules-with-searching-require-module "require-module"), it will use that to try and load them if they're not there.  If it can't do that and they're not there you'll get a compile-time error.
+
+----
+
+The TFEB.ORG Lisp hax are copyright 1989-2021 Tim Bradshaw.  See `LICENSE` for the license.
 
 ----
 
