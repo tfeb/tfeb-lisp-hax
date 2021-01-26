@@ -1,5 +1,5 @@
 # [TFEB.ORG Lisp hax](https://github.com/tfeb/tfeb-lisp-hax "TFEB.org Lisp hax")
-This repo contains a collection of small Common Lisp hacks I've written over the last thirty-odd years[^1].  Some of them are genuinely useful, some of them are little more than toys written long ago to prove a point on `comp.lang.lisp`.  Although they are here bundled together into an ASDF system that's only for convenience: they're all independent of each other.  I will probably add more over time.
+This repo contains a collection of small Common Lisp hacks I've written over the last thirty-odd years[^1].  Some of them are genuinely useful, some of them are little more than toys written long ago to prove a point on `comp.lang.lisp`.  Although they are here bundled together into an ASDF system that's only for convenience: most of them are independent of each other.  I will probably add more over time.
 
 ## General
 ### Modules
@@ -72,7 +72,7 @@ then
 ```
 
 ### Notes
-The collection function – `collect` or the functions defined by `with-collectors` – are declared inline and so should be very quick.  But they *are* local functions[^4]: you can return them.  So this devious trick works, as do tricks like it:
+The collection functions – `collect` or the functions defined by `with-collectors` – are declared inline and so should be very quick.  But they *are* local functions[^4]: you can return them.  So this devious trick works, as do tricks like it:
 
 ```lisp
 (defun devious ()
@@ -91,6 +91,8 @@ and now
     (peculiar 2 c))
 (1 2)
 ```
+
+`collecting` is older than `with-collectors` by more than a decade I think.  However it has an obvious definition as a shim on top of `with-collectors`and, finally, that now *is* its definition.
 
 ### Package, module
 `collecting` lives in `org.tfeb.hax.collecting` and provides `:org.tfeb.hax.collecting`.
@@ -638,7 +640,9 @@ nil
 
 > (collecting (collect 1))
 (collecting (collect 1))
- -> (let (# #) (flet # # ...) ...)
+ -> (with-collectors (collect) (collect 1))
+(with-collectors (collect) (collect 1))
+ -> (let (#:collect-var #:collect-tail) (flet # # ...) ...)
 (1)
 
 > (with-collectors (a b)
@@ -669,16 +673,20 @@ nil
 
 > (collecting (collect 1))
 (collecting (collect 1))
- -> (let ((#:c 'nil) (#:ct nil))
+ -> (with-collectors (collect) (collect 1))
+(with-collectors (collect) (collect 1))
+ -> (let (#:collect-var #:collect-tail)
       (flet ((collect (org.tfeb.hax.collecting::it)
-               (if #:c
-                   (setf (cdr #:ct) (list org.tfeb.hax.collecting::it)
-                         #:ct (cdr #:ct))
-                 (setf #:ct (list org.tfeb.hax.collecting::it) #:c #:ct))
+               (if #:collect-var
+                   (setf (cdr #:collect-tail)
+                         (list org.tfeb.hax.collecting::it)
+                         #:collect-tail (cdr #:collect-tail))
+                 (setf #:collect-tail (list org.tfeb.hax.collecting::it)
+                       #:collect-var #:collect-tail))
                org.tfeb.hax.collecting::it))
         (declare (inline collect))
         (collect 1))
-      #:c)
+      (values #:collect-var))
 (1)
 ```
 
@@ -716,7 +724,9 @@ nil
 
 > (collecting (collect 1))
 (collecting (collect 1))
- -> (let (# #) (flet # # ...) ...)
+ -> (with-collectors (collect) (collect 1))
+(with-collectors (collect) (collect 1))
+ -> (let (#:collect-var #:collect-tail) (flet # # ...) ...)
 (1)
 ```
 
