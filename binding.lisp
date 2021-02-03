@@ -73,9 +73,20 @@
                 (error "too many expressions in ~S" form))
               (values 'variable (rest form)))
              (cons
-              (values 'function `(,(first (first (rest form)))
-                                  ,(rest (first (rest form)))
-                                  ,@(rest (rest form)))))
+              ;; This is a local function: some slight parsing is
+              ;; needed here
+              (destructuring-bind ((name &rest args) &body decls/body)
+                  (rest form)
+                (iterate parse-decls ((body decls/body)
+                                      (slced '()))
+                  (if (and (consp body)
+                           (consp (first body))
+                           (eq (car (first body)) 'declare))
+                      (parse-decls (rest body) (cons (first body)
+                                                     slced))
+                    (values 'function `(,name ,args
+                                              ,@(reverse slced)
+                                              (binding ,@body)))))))
              (t
               (error "mutant bind form ~S" form))))
         ((bind/values)
@@ -213,8 +224,18 @@
            ((binding
              (bind (f &rest args) args)
              (f 1 3))
-           (labels ((f (&rest args) args))
+           (labels ((f (&rest args)
+                      (binding args)))
              (f 1 3)))
+           ((binding
+              (bind (f x)
+                (declare (type fixnum x))
+                x)
+              (f 1))
+            (labels ((f (x)
+                       (declare (type fixnum x))
+                       (binding x)))
+              (f 1)))
            ((binding
              (bind/values (a b) (values 1 2))
              (values a b))

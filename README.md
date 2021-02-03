@@ -898,13 +898,13 @@ counter
 `define-functions` lives in `org.tfeb.hax.define-functions` and provides `:org.tfeb.hax.define-functions`.
 
 ## Local bindings: `binding`
-Different languages take different approaches to declaring – *binding* variables and functions locally in code.
+Different languages take different approaches to declaring – *binding* – variables and functions locally in code.
 
 - CL requires `let`, `labels` &c, which is clear but involves extra indentation;
 - Scheme allows local use of `define` which does not involve indentation, but does not allow it everywhere;
-- Python allows local bindings anywhere but the scope is insane (bindings have function scope and are thus visible before they appear textually) and variable binding is conflated with assignment which is just a horrible idea:
+- Python allows local bindings anywhere but the scope is insane (bindings have function scope and are thus often visible before they appear textually) and variable binding is conflated with assignment which is just a horrible idea:
 - some C compilers may allow variable declarations almost anywhere with their scope starting from the point of declaration and running to the end of the block – I am not sure what the standard supports however;
-- Racket allows `define` in many more places than Scheme with their scope running to the end of the appropriate block.
+- Racket allows `define` in many more places than Scheme with the scope running from the `define` to the end of the appropriate block.
 
 Racket is pretty clear how what it does works:
 
@@ -914,7 +914,7 @@ Racket is pretty clear how what it does works:
 ...
 ```
 
-turns into
+turns into something like
 
 ```lisp
 ...
@@ -965,15 +965,53 @@ corresponds to
   (let* ((x 1) (y 2))
     (print 2)
     (labels ((f1 (v)
-               (+ x v))
+               (binding (+ x v)))
              (f2 (v)
-               (+ y (f1 v))))
+               (binding (+ y (f1 v)))))
       (f2 1))))
 ```
 
 and so on. `bind/values` and `bind/destructuring` are not coalesced as it makes no sense to do so.
 
 ### Notes
+The bodies of local functions bound by `binging` are themselves wrapped in  `binding` forms, but declarations raised out of these forms.  So
+
+```lisp
+(binding
+  (bind (f i)
+    (declare (type fixnum i))
+    (bind j (* i 2))
+    (if (fixnump j)
+        (f j)
+      j))
+  (f 1))
+```
+
+expands to
+
+```lisp
+(labels ((f (i)
+           (declare (type fixnum i))
+           (binding
+             (bind j (* i 2))
+             (if (fixnump j)
+                 (f j)
+               j))))
+  (f 1))
+```
+
+and hence to
+
+```lisp
+(labels ((f (i)
+           (declare (type fixnum i))
+           (let* ((j (* i 2)))
+             (if (fixnump j)
+                 (f j)
+               j))))
+  (f 1))
+```
+
 `bind` &c work *only* directly within `binding`: there is no code walker, intentionally so.  There are top-level definitions of `bind` &c as macros which signal errors at macroexpansion time.
 
 ### Package, module, dependencies
