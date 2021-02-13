@@ -927,6 +927,7 @@ I thought it would be fun to implement a form which does this for CL, and that's
 **`binding`** is a form, directly within whose body several special binding forms are available.  These forms are:
 
 - `bind` will bind local variables or functions, corresponding to `let*` or `labels` respectively;
+- `bind/macro` will bind local macros or symbol macros, corresponding to `macrolet` or `symbol-macrolet` respectively;
 - `bind/values` will bind multiple values, corresponding to `multiple-value-bind`;
 - `bind/destructuring` corresponds to `destructuring-bind`.
 
@@ -934,6 +935,11 @@ For `bind` the two cases are:
 
 - `(bind var val)` will bind `var` to `val`using `let*`;
 - `(bind (f ...) ...)` will create a local function `f` using `labels` (the function definition form is like Scheme's `(define (f ...) ...)` syntax).
+
+For `bind/macro` the two cases are really the same although the expansions are different:
+
+- `(bind/macro (m ...) ...)` turns into `(macrolet ((m (...) ...) ...)`;
+- `(bind/macro m e)` turns into `(symbol-macrolet ((m e)) ...)`.
 
 For `bind/values` there are also two cases:
 
@@ -974,7 +980,7 @@ corresponds to
 and so on. `bind/values` and `bind/destructuring` are not coalesced as it makes no sense to do so.
 
 ### Notes
-The bodies of local functions bound by `binging` are themselves wrapped in  `binding` forms, but declarations raised out of these forms.  So
+The bodies of local functions and macros bound by `binding` are themselves wrapped in  `binding` forms, but declarations are raised out of these forms.  So
 
 ```lisp
 (binding
@@ -1012,7 +1018,7 @@ and hence to
   (f 1))
 ```
 
-`bind` &c work *only* directly within `binding`: there is no code walker, intentionally so.  There are top-level definitions of `bind` &c as macros which signal errors at macroexpansion time.
+Apart from this case,`bind` &c work *only* directly within `binding`: there is no code walker, intentionally so.  There are top-level definitions of `bind` &c as macros which signal errors at macroexpansion time.
 
 ### Package, module, dependencies
 `binding` lives in `org.tfeb.hax.binding`and provides `:org.tfeb.hax.binding`.  `binding` depends on `collecting` and `iterate` at compile and run time.  If you load it as a module then, if you have [`require-module`](https://github.com/tfeb/tfeb-lisp-tools#requiring-modules-with-searching-require-module "require-module"), it will use that to try and load them if they're not there.  If it can't do that and they're not there you'll get a compile-time error.
