@@ -20,7 +20,7 @@ All of these tools make use of *domain-structured names*: packages, modules, fea
 
 ----
 
-## Collecting lists forwards: `collecting`
+## Collecting lists forwards and accumulating: `collecting`
 This is the oldest hack I think, dating back at least to 1989 and perhaps before that.  It's also probably the most useful.
 
 It's quite often useful to be able to collect a list, in order, while walking over some possibly-large data structure.  `loop` has a `collect` clause which lets you do this if what you are doing is looping, but you are not always looping, and not everyone is fond of `loop`[^3].  You can pretty easily collect lists *backwards* and then remember to reverse them at the end, but that's frankly ugly and also seemed frighteningly expensive in the 1980s if you wanted to collect a large list.  `collecting` provides two macros which let you collect things into lists in the order in which they were collected.  They use tail-pointers which means they don't have to reverse or search down the lists they are building.
@@ -47,6 +47,8 @@ then
 (1 2 3 4 6)
 ```
 
+`collect` returns its argument.
+
 ### Collecting multiple lists: `with-collectors`
 **`with-collectors`** establishes an environment where multiple named list collectors are available, and will return as many values as there are collectors.  For example, given:
 
@@ -71,8 +73,10 @@ then
 (a b)
 ```
 
-### Notes
-The collection functions – `collect` or the functions defined by `with-collectors` – are declared inline and so should be very quick.  But they *are* local functions[^4]: you can return them.  So this devious trick works, as do tricks like it:
+As with `collecting`, the local collector functions return their argument.
+
+### Notes on `collecting` / `with-collectors`
+The collection functions – `collect` or the functions defined by `with-collectors` – are declared inline, as are the functions defined by `with-accumulators`, and so should be very quick.  But they *are* local functions[^4]: you can return them.  So this devious trick works, as do tricks like it:
 
 ```lisp
 (defun devious ()
@@ -92,7 +96,102 @@ and now
 (1 2)
 ```
 
-`collecting` is older than `with-collectors` by more than a decade I think.  However it has an obvious definition as a shim on top of `with-collectors`and, finally, that now *is* its definition.
+`collecting` is older than `with-collectors` by more than a decade I think.  However it has an obvious definition as a shim on top of `with-collectors` and, finally, that now *is* its definition.
+
+### General accumulators: `with-accumulators`
+**`with-accumulators`** is a variation on the theme of `with-collectors`: it allows you to accumulate things based on any function and a secret accumulator variable.  `with-accumulators` takes a number of accumulator specifications as its first argument.   These can have either a simple form and a more general form which may be extended in future.
+
+The simple form is `(accumulator operatior &optional initially)`.
+
+- `accumulator` is the name of the local function for this accumulator, which takes one argument, the thing to accumulate.
+- `operator` is the operator corresponding to the accumulator: this denotes a function which can take either two or no arguments: it is called with no arguments to initialise the variable underlying the accumulator if there is no `initially` value (this is the only case it is called with no arguments), or with the current value of the accumulator and the thing to be accumulated when the local function is called to accumulate something.
+- `initially`, if given, is the initial value.  If it is not given the accumulator is initialised by calling the operator function with no arguments.
+
+The more general form is `(accumulator operator &key initially type returner)`.
+
+- `accumulator`, `operator` and `initially` are the same as before.
+- `type` is a type specification which is used to declare the type of the underlying variable.
+- `returner` denotes a function of one argument which, if given, is called with the final value of the accumulator: its return value is used instead of the value of the accumulator.
+- There may be additional keyword arguments in future.
+
+An example: let's say you want to walk some cons tree counting symbols:
+
+```lisp
+(defun count-symbols (tree)
+  (with-accumulators ((s +))
+    ;; equivalent to (s + 0) or (s + :initially 0 :type integer), say
+    (labels ((walk (thing)
+               (typecase thing
+                 (null)
+                 (symbol (s 1))
+                 (cons (walk (car thing))
+                       (walk (cdr thing)))
+                 (t))))
+      (walk tree))))
+```
+
+Then
+
+```lisp
+ > (count-symbols '(1 2 foo (bar 3)))
+2
+```
+
+A more general function can count symbols and conses:
+
+```lisp
+(defun count-symbols-and-conses (tree)
+  (with-accumulators ((s +)
+                      (c +))
+    (labels ((walk (thing)
+               (typecase thing
+                 (null)
+                 (symbol (s 1))
+                 (cons (c 1)
+                       (walk (car thing))
+                       (walk (cdr thing)))
+                 (t))))
+      (walk tree))))
+```
+
+Then
+
+```lisp
+> (count-symbols-and-conses '(1 2 foo (bar 3)))
+2
+6
+```
+
+The accumulator functions are declared inline and return their argument, which is compatible with `collecting` / `with-collectors`.
+
+### Notes on `with-accumulators`
+There is no single-accumulator special case: it didn't seem useful as you need to specify the accumulation operator anyway.
+
+The accumulation operator and returner are *names* which denote functions, not functions: they can be either symbols or a lambda expressions, they can't be functions.  Specifically it needs to be the case that `(operator ...)` is a valid form.  That means that if you do want to use some function you'd need to provide an operator which was, for instance `(lambda (into val) (funcall f into val))`.
+
+`with-accumulators` is very much newer than either of the other two macros, and may be more buggy.  It is certainly the case that new keywords may appear in accumulator specifications.
+
+`with-accumulators` can implement `collecting` or `with-collectors`:
+
+```lisp
+(with-accumulators ((collect
+                     (lambda (into it)
+                       (let ((lit (list it)))
+                         (if into
+                             (setf (cdr (cdr into)) lit
+                                   (cdr into) lit)
+                           (setf into (cons lit lit))))
+                       into)
+                     :initially nil
+                     :returner car))
+  ...
+  (collect something)
+  ...)
+```
+
+This keeps the state in a cons in the obvious way, and then uses a returner function to return only the interesting bit of the cons.  `collecting` and `with-collectors` are not actually implemented in terms of `with-accumulators`, although they could be.
+
+It's arguably the case that the accumulator functions should return the current value of the accumulator.  This is incompatible with what the list collector functions do, but perhaps might be more useful.  But, in fact, the right thing in that case would be for them to return what the returner function returns (because the accumulator value might be some internal state, as it is with the implementation of a version of `collecting`.  And I wanted to be able to assume that the returner function is called exactly once, so it's allowed to be destructive.
 
 ### Package, module
 `collecting` lives in `org.tfeb.hax.collecting` and provides `:org.tfeb.hax.collecting`.
