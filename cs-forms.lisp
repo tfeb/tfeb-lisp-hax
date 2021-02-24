@@ -30,7 +30,7 @@
 
 (provide :org.tfeb.hax.cs-forms)
 
-(defun make-cs-form-readtable (&key (from nil fromp) (to nil)
+(defun make-cs-form-readtable (&key (from *readtable*) (to nil)
                                     (toggle #\~))
   "Make a readtable suitable for reading single forms case-sensitively.
 
@@ -61,8 +61,8 @@ If TO is given, instead copy & modify FROM into TO (this behaviour is
 compatible with what COPY-READTABLE does).
 
 If TOGGLE is given, then use it as the toggle character instead of #\\~."
-  (let ((cirt (if fromp (copy-readtable from to) (copy-readtable)))
-        (csrt (if fromp (copy-readtable from to) (copy-readtable))))
+  (let ((cirt (copy-readtable from to))
+        (csrt (copy-readtable from to)))
     (when (get-dispatch-macro-character #\# toggle cirt)
       (error "Someone is already using #~A" toggle))
     (setf (readtable-case csrt) :preserve)

@@ -19,7 +19,7 @@
 
 (provide :org.tfeb.hax.comment-form)
 
-(defun make-comment-form-readtable (&key (from nil fromp) (to nil)
+(defun make-comment-form-readtable (&key (from *readtable*) (to nil)
                                          (semicolon #\;))
   "Make a readtable with comment-form readmacro (#; by default).
 
@@ -33,7 +33,7 @@ If TO is given, instead copy & modify FROM into TO (this behaviour is
 compatible with what COPY-READTABLE does).
 
 If SEMICOLON is given, it is the dispatching character, instead of #\\;."
-  (let ((cfrt (if fromp (copy-readtable from to) (copy-readtable))))
+  (let ((cfrt (copy-readtable from to)))
     (when (get-dispatch-macro-character #\# semicolon cfrt)
       (error "Someone is already using #~A" semicolon))
     (set-dispatch-macro-character

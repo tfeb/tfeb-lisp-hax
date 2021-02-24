@@ -48,7 +48,7 @@
 (defvar *read-package-package*
   (make-package "READ-PACKAGE-PACKAGE" :use '()))
 
-(defun make-read-package-readtable (&key (from nil fromp) (to nil)
+(defun make-read-package-readtable (&key (from *readtable*) (to nil)
                                          (at #\@))
   "Make readtable with read-time package support.
 
@@ -69,7 +69,7 @@ compatible with what COPY-READTABLE does).
 
 If AT is given, it is the dispatch macro character to use instead of #\@."
 
-  (let ((rt (if fromp (copy-readtable from to) (copy-readtable))))
+  (let ((rt (copy-readtable from to)))
     (when (get-dispatch-macro-character #\# at rt)
       (error "Someone is already using #~A" at))
     (set-dispatch-macro-character
