@@ -1,5 +1,11 @@
 ;;;; Hairy function & macro definition macros
 ;;;
+;;; define-functions.lisp is copyright 2020 by me, Tim Bradshaw, and
+;;; may be used for any purpose whatsoever by anyone. It has no
+;;; warranty whatsoever. I would appreciate acknowledgement if you use
+;;; it in anger, and I would also very much appreciate any feedback or
+;;; bug fixes.
+;;;
 
 (defpackage :org.tfeb.hax.define-functions
   (:use :cl)

@@ -3,6 +3,12 @@
 ;;; The real goal of this is to be able to write strings which can
 ;;; ignore newlines.
 ;;;
+;;; stringtable.lisp is copyright 2021 by me, Tim Bradshaw, and may be
+;;; used for any purpose whatsoever by anyone. It has no warranty
+;;; whatsoever. I would appreciate acknowledgement if you use it in
+;;; anger, and I would also very much appreciate any feedback or bug
+;;; fixes.
+;;;
 
 #+org.tfeb.tools.require-module
 (org.tfeb.tools.require-module:needs
