@@ -6,6 +6,7 @@ This repo contains a collection of small Common Lisp hacks I've written over the
 Almost all of these hacks are independent modules: they live in their own little packages and are loadable standalone: if you just want one of them then you don't need to drag all the unrelated ones into your environment.  If you put them in the right place, then [`require-module`](https://github.com/tfeb/tfeb-lisp-tools#requiring-modules-with-searching-require-module "require-module") will find and load them for you: this is how I use them.  Exceptions are:
 
 - `binding`, which depends on `collecting` and `iterate`, and will try to use `require-module` to load them if they're not already known when it's compiled or loaded.
+- `stringtable`, which depends on  `collecting` and `iterate`, and will attempt the same trick.
 
 The system itself provides `:org.tfeb.hax`: there is no `org.tfeb.hax` package however: each component lives in its own package with names like `org.tfeb.hax.*`.
 
@@ -1119,8 +1120,157 @@ and hence to
 
 Apart from this case,`bind` &c work *only* directly within `binding`: there is no code walker, intentionally so.  There are top-level definitions of `bind` &c as macros which signal errors at macroexpansion time.
 
+`binding` uses `iterate` to do iteration, so it relies on an implementation which can turn this into tail calls (or has a big enough stack, which will probably be the case for most practical source code).
+
 ### Package, module, dependencies
 `binding` lives in `org.tfeb.hax.binding`and provides `:org.tfeb.hax.binding`.  `binding` depends on `collecting` and `iterate` at compile and run time.  If you load it as a module then, if you have [`require-module`](https://github.com/tfeb/tfeb-lisp-tools#requiring-modules-with-searching-require-module "require-module"), it will use that to try and load them if they're not there.  If it can't do that and they're not there you'll get a compile-time error.
+
+## Special strings: `stringtable`
+`format` has a very useful feature: there is a special format control 'tilde newline' which will cause `format` to skip both the newline and any following whitespace characters[^11].  This makes writing long format control strings much easier, which is useful since format control strings do tend to be long.  You can, then, use `(format nil ...)` as a way of simply creating a string with, if you want, newlines being ignored.
+
+I wanted to do something that was both less and more than this: I wanted a way of writing literal strings such that it was possible to, for instance, ignore newlines to help source formatting, but  *without* involving `format` so I didn't have to worry about all the other format controls, or about explicitly trying to make sure `format` got called before runtime to avoid overhead.  I also wanted the possibility of being able to define my own special handlers in such strings, with all of this working at read time.
+
+This is what stringtables do: they provide a way of reading literal strings where the string reader, as well as the usual escape character (which can be set), has zero or more 'special' characters which can cause user-defined functions to be called, all controlled by a stringtable object.  The whole thing is like a simplified version of the normal CL reader, with the stringtable object playing the role of the readtable (this is why they are called 'stringtables' of course).  In fact the various functions in the interface intentionally echo those of the normal reader interface: that interface is a bit clunky I think, but I thought it was better to be culturally compatible with it than invent something new.
+
+A critical difference between stringtables and the reader is that the special character handlers in stringtables have *fallbacks*: these can be specified, but the default fallback is a function which simply returns the character, or the special character and the character.
+
+The stringtable reader can be glued into the normal reader on a macro character, and there is a function to do this.  This originally used `#"..."` by default, but I decided that this was too likely to be used by other people, so the default is now `#/.../`.  Although the system is now rather general, there is also a function which sets up a default special handler to skip newlines and following whitespace.
+
+### Examples
+Here's a tiny example, using the gluing functions to make `read` use stringtables and then to tell the default stringtable to use the newline skipper.
+
+```lisp
+ > (setf *readtable* (make-stringtable-readtable))
+#<readtable 402002208B>
+
+> (set-stringtable-newline-skipper)
+#<stringtable 421017BA03>
+
+> (read)
+#/this is ~
+
+a string with no newlines in it ~
+      at all/
+"this is a string with no newlines in it at all"
+```
+
+Here's another example which puts the stringtable reader on the older `#"..."` syntax:
+
+```lisp
+> (setf *readtable* (make-stringtable-readtable :delimiter #\"))
+#<readtable 4020022E5B>
+
+> (set-stringtable-newline-skipper)
+#<stringtable 4210196123>
+
+> (read)
+#"foo ~
+ bar"
+"foo bar"
+```
+
+### Reading special strings
+The algorithm for reading a special string is:
+
+- read a character, if it is the delimiter turn all the accumulated characters into a string;
+- if it is the escape character (by default `#\\`) then read the next character and accumulate it (even if it is the delimiter);
+- if is is a special character, then read the next character
+	- if it is the delimiter this is an error (if you want to escape the delimiter, use the escape character);
+	- otherwise find either its handler or the fallback handler for that special character, then call the handler with four arguments: the special character, the character after it, the delimiter and the stream;
+	- the handler function should return: a character which is accumulated; a list of characters which are accumulated (this list may be empty); or a string, the characters of which are accumulate.  Any other return value is an error.
+
+An end of file before an unescaped delimiter is reached is an error.
+
+### The interface
+**`*stringtable*`** is the current stringtable object, by analogy with `*readtable*`.  Initially it is set to a copy of the standard stringtable, which:
+
+- uses `#\` as an escape character;
+- has a single special character, `#\~`, with a default fallback function which returns either the subcharacter or the special character and the subcharacter, depending on `*stringtable-fallback-absorb-special*` (see below);
+- has no handlers other than the fallback for the special character.
+
+**`*stringtable-fallback-absorb-special*`** is a variable which controls the behaviour of the default fallback handler: if it is true then it will absorb the special character and simply return the subcharacter; if it is false it will return both the special character and the subcharacter.  User-defined fallback handlers are encouraged to respect this variable.  The default value is true.
+
+**`copy-stringtable`** makes a copy of a stringtable.  It has three optional arguments.
+
+- `from` is the stringtable to copy, which is by default `*stringtable*`.  If given as `nil` it will make a copy of the standard stringtable.
+- `to` is the stringtable to copy into, which is `nil` by default, meaning to make a new stringtable;
+- `nospecial` will cause the copy to have no special characters at all: in this case the only thing being copied is the escape character.
+
+The argument convention for this function is clunky, but it is done this way for compatibility with `copy-readtable`.  Providing `nospecial` is the *only* way to make a stringtable with no special characters at all.
+
+**`stringtable-escape-character`** is the accessor for the escape character of a stringtable.
+
+**`make-stringtable-special-character`** makes a special character in a stringtable.  If there is already one there it will remove all of its subcharacters and optionally replace the fallback function.  It has one mandatory argument and two optional arguments:
+
+- `character` is the special character;
+- `fallback` is the fallback function, which if given should be a function of four arguments as described above, with the default being the standard fallback function also described above;
+- `stringtable` is the stringtable, with the default being `*stringtable*`.
+
+The function returns `t` by analogy with `make-dispatch-macro-character`.
+
+**`get-stringtable-special-character`** gets the handler function for a special character and subcharacter in a stringtable.  It has two mandatory arguments and one optional argument:
+
+- `character` is the special character, it is an error if this is not special in the stringtable;
+- `subcharacter` is the subcharacter, which can be any character;
+- `stringtable` is the stringtable, default `*stringtable*`.
+
+The function returns two values:
+
+- the handler function;
+- true if the handler is not the fallback function, false if it is.
+
+**`set-stringtable-special-character`** defines a handler for a special character and subcharacter pair.  It has three mandatory arguments and one optional argument:
+
+- `character` is the special character, which must be special in the stringtable;
+- `subcharacter` is the subcharacter, which can be any character;
+- `function` is the handler, as described above;
+- `stringtable` is the stringtable, default `*stringtable*`.
+
+The function returnt `t`.
+
+**`read-string-with-stringtable`** is the interface to reading special strings.  It is intended to be called from a reader macro function.  It has one mandatory argument and two optional arguments:
+
+- `delimiter` is the closing delimiter for the string, a character;
+- `from` is the stream to read, by default `*standard-input*`;
+- `stringtable` is the stringtable to use, by default `*stringtable*`.
+
+It returns the string read, or signals an error if something went wrong.
+
+The remaining two functions are not part of the core behaviour of the module, but make it easy to set up the useful common case (or my useful common case, anyway).
+
+**`make-stringtable-readtable`** makes a readtable with a stringtable reader attached to a macro character.  It has three keyword arguments:
+
+- `from` is the readtable to copy, with the same conventions as `copy-readtable` – the default is `*readtable*`, providing `nil` means 'copy the standard readtable';
+- `to` is the readtable to copy into as for `copy-readtable` with the default being `nil` meaning 'make a new readtable';
+- `delimiter` is the delimiter character, with the default being `#\/` (see below).
+
+The returned readtable will have a macro character set up for the `delimiter` subcharacter of `#\#` which will read special strings with `delimiter`.
+
+Note this function is not fully general: its purpose in life is to set up the common case.  It's perfectly possible to have special string readers on other characters (even `#\"`), but if you want to do that you need to do it yourself.
+
+**`set-stringtable-newline-skipper`** is a function which installs a suitable newline-skipper handler for a stringtable.  It has three keyword arguments:
+
+- `stringtable` is the stringtable to install the skipper on, with the default being `*stringtable*`;
+- `special-character`, default `#\~`, is the special character in the stringtable where the skipper should be defined – it is an error if this is not a special character in the stringtable;
+- `white-warners`, default `t` will install 'warner' functions on the special character followed by whitespace other than newline.
+
+This function will in fact install the skipper function on both `#ewline`, `#\Return` and `#\Linefeed` (even if some of those are the same character).  The 'white warner' functions get installed on `#\Space` and `#\Tab` and will do nothing, but will generate a warning: the aim of this is to detect the common mistake of a trailing space.
+
+The function returns the stringtable.
+
+This function relies on some slightly non-standard characters: I think they exist in all common implementations however.  If I find ones where they don't exist I will conditionalise the code for them.
+
+### Notes
+As mentioned above, a lot of the interface is trying to mirror the standard readtable interface, which is why it's a bit ugly.
+
+I've talked about things 'being an error' above: in fact in most (I hope all) cases suitable conditions are signaled
+
+Stringtables are intended to provide a way of reading literal strings with some slightly convenient syntax[^12]: it is *not* a system for, for instance, doing some syntactically-nicer or more extensible version of what `format` does.  There are other things which do that, I'm sure.
+
+I am thinking about changing the default delimiter for `make-stringtable-readtable`back to `#\"`, which would mean that the readtable it makes would hve special strings which look like `#"..."` instead of `#/.../`.
+
+### Package, module, dependencies
+`stringtable` lives in `org.tfeb.hax.stringtable` and provides `:org.tfeb.hax.stringtable`.  `stringtable` depends on `collecting` and `iterate` at compile and run time.  If you load it as a module then, if you have [`require-module`](https://github.com/tfeb/tfeb-lisp-tools#requiring-modules-with-searching-require-module "require-module"), it will use that to try and load them if they're not there.  If it can't do that and they're not there you'll get a compile-time error.
 
 ----
 
@@ -1147,3 +1297,7 @@ The TFEB.ORG Lisp hax are copyright 1989-2021 Tim Bradshaw.  See `LICENSE` for t
 [^9]:	And I was not willing to put in explicit extra methods for `validate-superclass` for `cl:standard-class` since the whole purpose of using Closer to MOP was to avoid that kind of nausea.
 
 [^10]:	In fact, Racket.
+
+[^11]:	Or, optionally, not to skip the newline but to skip any whitespace following it.
+
+[^12]:	As an example of this, it would be quite possible to define a special handler which meant that, for instance `#/this is ~U+1234+ an arbitrary Unicode character/`would work.

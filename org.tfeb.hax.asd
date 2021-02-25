@@ -25,6 +25,8 @@
    (:file "trace-macroexpand")
    (:file "binding"
     :depends-on ("collecting" "iterate"))
+   (:file "stringtable"
+    :depends-on ("collecting" "iterate"))
    (:file "hax-cometh"
     :depends-on ("collecting" "wrapping-standard"
                  "iterate" "dynamic-state" "memoize"
