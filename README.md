@@ -1048,6 +1048,14 @@ For `bind/values` there are also two cases:
 
 `bind/destructuring` doesn't have any variants.
 
+`bind/values` also has a special magic: if you use `nil` as the name of a 'variable', that binding is quietly ignored.  This helps in cases where, for instance, you need only some of the values of a form:
+
+```lisp
+(binding
+  (bind/values (nil interesting) (two-valued-function))
+  ... interesting ...)
+```
+
 All of these forms are coalesced to create the minimum number of binding constructs in the generated code (this is why `bind` corresponds to `let*`), so:
 
 ```lisp
@@ -1119,6 +1127,8 @@ and hence to
 ```
 
 Apart from this case,`bind` &c work *only* directly within `binding`: there is no code walker, intentionally so.  There are top-level definitions of `bind` &c as macros which signal errors at macroexpansion time.
+
+I thought about using `_` (or symbols with that name) as the 'ignore this binding' for `bind/values` to be compatible with, for instance, Racket, but I decided that using `nil` could break no existing programs so was safer.
 
 `binding` uses `iterate` to do iteration, so it relies on an implementation which can turn this into tail calls (or has a big enough stack, which will probably be the case for most practical source code).
 
@@ -1267,7 +1277,7 @@ I've talked about things 'being an error' above: in fact in most (I hope all) ca
 
 Stringtables are intended to provide a way of reading literal strings with some slightly convenient syntax[^12]: it is *not* a system for, for instance, doing some syntactically-nicer or more extensible version of what `format` does.  There are other things which do that, I'm sure.
 
-I am thinking about changing the default delimiter for `make-stringtable-readtable`back to `#\"`, which would mean that the readtable it makes would hve special strings which look like `#"..."` instead of `#/.../`.
+I am thinking about changing the default delimiter for `make-stringtable-readtable`back to `#\"`, which would mean that the readtable it makes would have special strings which look like `#"..."` instead of `#/.../`.
 
 ### Package, module, dependencies
 `stringtable` lives in `org.tfeb.hax.stringtable` and provides `:org.tfeb.hax.stringtable`.  `stringtable` depends on `collecting` and `iterate` at compile and run time.  If you load it as a module then, if you have [`require-module`](https://github.com/tfeb/tfeb-lisp-tools#requiring-modules-with-searching-require-module "require-module"), it will use that to try and load them if they're not there.  If it can't do that and they're not there you'll get a compile-time error.

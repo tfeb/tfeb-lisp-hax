@@ -141,8 +141,20 @@
                  `(let* ,(reverse binding/s)
                     ,@(walk-binding-body more)))
                 ((values)
-                 `(multiple-value-bind ,(first binding/s) ,(second binding/s)
-                    ,@(walk-binding-body more)))
+                 (multiple-value-bind (variables ignores)
+                     (with-collectors (variable ignore)
+                       (do* ((vt (first binding/s) (rest vt))
+                             (i 1 (if (not v) (1+ i) i))
+                             (v (first vt) (first vt)))
+                           ((null vt))
+                         (if v
+                             (variable v)
+                           (let ((it (make-symbol (format nil "NIL-~D" i))))
+                             (variable it)
+                             (ignore it)))))
+                   `(multiple-value-bind ,variables ,(second binding/s)
+                      (declare (ignore ,@ignores))
+                      ,@(walk-binding-body more))))
                 ((destructuring)
                  `(destructuring-bind ,(first binding/s) ,(second binding/s)
                     ,@(walk-binding-body more)))
@@ -200,6 +212,8 @@
       `(progn ,@expanded))))
 
 ;;; Rudimentary sanity tests
+;;;
+;;; This doesn't test NIL ignoring at all
 ;;;
 (dolist (form/expansion
          '(((binding
