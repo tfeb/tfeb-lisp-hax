@@ -249,11 +249,13 @@
              (bind/values (a b) (values 1 2))
              (values a b))
             (multiple-value-bind (a b) (values 1 2)
+              (declare (ignore))
              (values a b)))
            ((binding
               (bind/values (a b) 1 2)
               (values a b))
             (multiple-value-bind (a b) (values 1 2)
+              (declare (ignore))
              (values a b)))
            ((binding
              (bind/destructuring (a &rest b) (list 1 2))
