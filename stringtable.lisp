@@ -228,7 +228,7 @@ stringtable to use, default *STRINGTABLE*.  Return the string."
                     :format-arguments (list result)
                     :stream from)))
           (inch (read-char from t nil t) nil nil)))
-       ((char= this escape)
+       ((and escape (char= this escape))
         (inch (read-char from t nil t) t nil))
        ((assoc this specials)
         (inch (read-char from t nil t) nil (assoc this specials)))
@@ -243,7 +243,7 @@ stringtable to use, default *STRINGTABLE*.  Return the string."
 ;;;
 
 (defun make-stringtable-readtable (&key (from *readtable*) (to nil)
-                                        (delimiter #\/))
+                                        (delimiter #\"))
   "Make a readtable which uses a stringtable for some strings
 
 FROM & TO specify readtables in the same way as COPY-READTABLE.

@@ -1144,7 +1144,7 @@ This is what stringtables do: they provide a way of reading literal strings wher
 
 A critical difference between stringtables and the reader is that the special character handlers in stringtables have *fallbacks*: these can be specified, but the default fallback is a function which simply returns the character, or the special character and the character.
 
-The stringtable reader can be glued into the normal reader on a macro character, and there is a function to do this.  This originally used `#"..."` by default, but I decided that this was too likely to be used by other people, so the default is now `#/.../`.  Although the system is now rather general, there is also a function which sets up a default special handler to skip newlines and following whitespace.
+The stringtable reader can be glued into the normal reader on a macro character, and there is a function to do this.  This uses `#"..."` by default, although it can use any other delimiter (for a while, it used `#/.../` as the default).  Although the system is now rather general, there is also a function which sets up a default special handler to skip newlines and following whitespace.
 
 ### Examples
 Here's a tiny example, using the gluing functions to make `read` use stringtables and then to tell the default stringtable to use the newline skipper.
@@ -1157,25 +1157,25 @@ Here's a tiny example, using the gluing functions to make `read` use stringtable
 #<stringtable 421017BA03>
 
 > (read)
-#/this is ~
+#"this is ~
 
 a string with no newlines in it ~
-      at all/
+      at all"
 "this is a string with no newlines in it at all"
 ```
 
-Here's another example which puts the stringtable reader on the older `#"..."` syntax:
+Here's another example which puts the stringtable reader on the interim `#/.../` syntax:
 
 ```lisp
-> (setf *readtable* (make-stringtable-readtable :delimiter #\"))
+> (setf *readtable* (make-stringtable-readtable :delimiter #\/))
 #<readtable 4020022E5B>
 
 > (set-stringtable-newline-skipper)
 #<stringtable 4210196123>
 
 > (read)
-#"foo ~
- bar"
+#/foo ~
+ bar/
 "foo bar"
 ```
 
@@ -1208,7 +1208,7 @@ An end of file before an unescaped delimiter is reached is an error.
 
 The argument convention for this function is clunky, but it is done this way for compatibility with `copy-readtable`.  Providing `nospecial` is the *only* way to make a stringtable with no special characters at all.
 
-**`stringtable-escape-character`** is the accessor for the escape character of a stringtable.
+**`stringtable-escape-character`** is the accessor for the escape character of a stringtable.  The escape character can be set to `nil` as a special case, which is equivalent to there being no escape character.
 
 **`make-stringtable-special-character`** makes a special character in a stringtable.  If there is already one there it will remove all of its subcharacters and optionally replace the fallback function.  It has one mandatory argument and two optional arguments:
 
@@ -1236,7 +1236,7 @@ The function returns two values:
 - `function` is the handler, as described above;
 - `stringtable` is the stringtable, default `*stringtable*`.
 
-The function returnt `t`.
+The function returns `t`.
 
 **`read-string-with-stringtable`** is the interface to reading special strings.  It is intended to be called from a reader macro function.  It has one mandatory argument and two optional arguments:
 
@@ -1252,11 +1252,11 @@ The remaining two functions are not part of the core behaviour of the module, bu
 
 - `from` is the readtable to copy, with the same conventions as `copy-readtable` – the default is `*readtable*`, providing `nil` means 'copy the standard readtable';
 - `to` is the readtable to copy into as for `copy-readtable` with the default being `nil` meaning 'make a new readtable';
-- `delimiter` is the delimiter character, with the default being `#\/` (see below).
+- `delimiter` is the delimiter character, with the default being `#\"` (see below).
 
 The returned readtable will have a macro character set up for the `delimiter` subcharacter of `#\#` which will read special strings with `delimiter`.
 
-Note this function is not fully general: its purpose in life is to set up the common case.  It's perfectly possible to have special string readers on other characters (even `#\"`), but if you want to do that you need to do it yourself.
+Note this function is not fully general: its purpose in life is to set up the common case.  It's perfectly possible to have special string readers on other characters, but if you want to do that you need to do it yourself.
 
 **`set-stringtable-newline-skipper`** is a function which installs a suitable newline-skipper handler for a stringtable.  It has three keyword arguments:
 
@@ -1277,7 +1277,7 @@ I've talked about things 'being an error' above: in fact in most (I hope all) ca
 
 Stringtables are intended to provide a way of reading literal strings with some slightly convenient syntax[^12]: it is *not* a system for, for instance, doing some syntactically-nicer or more extensible version of what `format` does.  There are other things which do that, I'm sure.
 
-I am thinking about changing the default delimiter for `make-stringtable-readtable`back to `#\"`, which would mean that the readtable it makes would have special strings which look like `#"..."` instead of `#/.../`.
+Originally the default delimiter for `make-stringtable-readtable` was `#\"`, as it is now .  For a while it was `#\/`, because I worried that `#"..."` would be likely to clash with other hacks,  but  `#/.../` finally seemed too obvious a syntax fir regular expressions to use for this.  You can always choose what you want to have.
 
 ### Package, module, dependencies
 `stringtable` lives in `org.tfeb.hax.stringtable` and provides `:org.tfeb.hax.stringtable`.  `stringtable` depends on `collecting` and `iterate` at compile and run time.  If you load it as a module then, if you have [`require-module`](https://github.com/tfeb/tfeb-lisp-tools#requiring-modules-with-searching-require-module "require-module"), it will use that to try and load them if they're not there.  If it can't do that and they're not there you'll get a compile-time error.
