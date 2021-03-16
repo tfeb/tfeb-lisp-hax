@@ -16,7 +16,7 @@
  :org.tfeb.hax.iterate)
 
 (defpackage :org.tfeb.hax.stringtable
-  (:use :cl :org.tfeb.tools.require-module
+  (:use :cl
    :org.tfeb.hax.collecting
    :org.tfeb.hax.iterate)
   (:export
