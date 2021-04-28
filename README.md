@@ -14,7 +14,7 @@ The system itself provides `:org.tfeb.hax`: there is no `org.tfeb.hax` package h
 These tools purport to be portable Common Lisp, apart from a couple which depend on [Closer to MOP](https://github.com/pcostanza/closer-mop "Closer to MOP") on some platforms[^2].  If they're not that's either a bug in the tools or a bug in the CL implementation.  In the former case I very definitely want to know, and I am also willing to add workarounds for the latter although I may be unable to test them on implementations I don't use.
 
 ### Zero history
-Most of these tools have long and varied histories.  However the parts of these histories that are still preserved are entangled with a lot of other code which is not public, so that history is not represented in the publication repo where you are probably reading this.
+Many of these tools have long and varied histories.  However the parts of these histories that are still preserved are entangled with a lot of other code which is not public, so that history is not represented in the publication repo where you are probably reading this.  They're not listed in any sensible order: those up to `read-package` are all variously old and were collected and published here in early 2021: everything after that was just added chronologically, although some of those modules also have long prehistories.
 
 ### Naming conventions
 All of these tools make use of *domain-structured names*: packages, modules, features and so on have names which start with a DNS domain name in reverse order and then may continue to divide further.  In this case the prefix is `org.tfeb.hax`: `org.tfeb` is the DNS component and `hax` is the division within the DNS part.  See [the TFEB.ORG tools documentation](https://github.com/tfeb/tfeb-lisp-tools#naming-conventions "TFEB.ORG tools / Naming conventions") for a little more on this.
@@ -1282,6 +1282,35 @@ Originally the default delimiter for `make-stringtable-readtable` was `#\"`, as 
 ### Package, module, dependencies
 `stringtable` lives in `org.tfeb.hax.stringtable` and provides `:org.tfeb.hax.stringtable`.  `stringtable` depends on `collecting` and `iterate` at compile and run time.  If you load it as a module then, if you have [`require-module`](https://github.com/tfeb/tfeb-lisp-tools#requiring-modules-with-searching-require-module "require-module"), it will use that to try and load them if they're not there.  If it can't do that and they're not there you'll get a compile-time error.
 
+## Object accessors: `object-accessors`
+`with-accessors` & `with-slots` are pretty useful macros.  Since `symbol-macrolet` exists it's pretty easy to provide a similar facility for accessor functions for completely arbitrary objects.  That's what `with-object-accessors` does: it does exactly what `with-accessors` does, but for completely arbitrary objects and functions[^13].  As an example:
+
+```lisp
+(defun foo (c)
+  (with-object-accessors (car cdr) c
+    (setf car 1                         ;(setf (car c) 1)
+          cdr 2)                        ;(setf (cdr c) 2)
+    c))
+```
+
+As with `with-accessors` you can provide names which are different than the accessor names:
+
+```lisp
+(defstruct long-name-thingy
+  long-name-slot)
+
+(defun bar (lnt)
+  (with-object-accessors ((s long-name-thingy-long-name-slot)) lnt
+    ...
+    (setf s 1)
+    ...))
+```
+
+There is absolutely nothing special about `with-object-accessors`: it's just the obvious thing you would write using `symbol-macrolet`.  Its only reason to exist is so that it *does* exist: versions of it no longer have to be endlessly rewritten.  It is careful to evaluate the object only once, so `(with-object-accessors (car cdr) (cons 1 2) ...)` would work, say.
+
+### Package, module
+`object-accessors` lives in `org.tfeb.hax.object-accessors` and provides `:org.tfeb.hax.object-accessors`.
+
 ----
 
 The TFEB.ORG Lisp hax are copyright 1989-2021 Tim Bradshaw.  See `LICENSE` for the license.
@@ -1311,3 +1340,5 @@ The TFEB.ORG Lisp hax are copyright 1989-2021 Tim Bradshaw.  See `LICENSE` for t
 [^11]:	Or, optionally, not to skip the newline but to skip any whitespace following it.
 
 [^12]:	As an example of this, it would be quite possible to define a special handler which meant that, for instance `#/this is ~U+1234+ an arbitrary Unicode character/`would work.
+
+[^13]:	It's quite possible that `with-accessors` will work for completely arbitrary objects and accessors already of course, but I don't think you can portably rely on this.
