@@ -16,6 +16,9 @@ These tools purport to be portable Common Lisp, apart from a couple which depend
 ### Zero history
 Many of these tools have long and varied histories.  However the parts of these histories that are still preserved are entangled with a lot of other code which is not public, so that history is not represented in the publication repo where you are probably reading this.  They're not listed in any sensible order: those up to `read-package` are all variously old and were collected and published here in early 2021: everything after that was just added chronologically, although some of those modules also have long prehistories.
 
+### Versioning
+Initially I was using a fairly strict version of [semantic versioning](https://semver.org/ "Semantic versioning"), where the major version number only changed on incompatible changes.  However since the hax are mostly independent this would mean complete new hax could appear with no major version change, and this has happened: `binding` appeared in 1.1.0 and `object-accessors` appeared in 2.1.0.  So in future major version will be *either* a complete new hack *or* an incompatible change to an old one.  New *features* in an existing hack will be a minor version, such as reified collectors which will appear in 2.2.0.
+
 ### Naming conventions
 All of these tools make use of *domain-structured names*: packages, modules, features and so on have names which start with a DNS domain name in reverse order and then may continue to divide further.  In this case the prefix is `org.tfeb.hax`: `org.tfeb` is the DNS component and `hax` is the division within the DNS part.  See [the TFEB.ORG tools documentation](https://github.com/tfeb/tfeb-lisp-tools#naming-conventions "TFEB.ORG tools / Naming conventions") for a little more on this.
 
@@ -194,6 +197,54 @@ This keeps the state in a cons in the obvious way, and then uses a returner func
 
 It's arguably the case that the accumulator functions should return the current value of the accumulator.  This is incompatible with what the list collector functions do, but perhaps might be more useful.  But, in fact, the right thing in that case would be for them to return what the returner function returns (because the accumulator value might be some internal state, as it is with the implementation of a version of `collecting`.  And I wanted to be able to assume that the returner function is called exactly once, so it's allowed to be destructive.
 
+### Explicit collectors
+`collecting` and friends were inspired by facilities in Interlisp-D[^5], and specifically by `TCONC`, `DOCOLLECT` and `ENDCOLLECT`.  These collected things by maintaining an explicit cons where the car was the list being collected and the cdr was the last cons of that list.  The nice thing about this is that these conses can be passed around as variables.  So, at long last, here are equivalents of those functions in CL.
+
+**`make-collector`** makes an object which can be used for collecting a list.  It takes two keyword arguments:
+
+- `initial-contents` is the initial contents of the collector, the default being `()`;
+- `copy` controls wether the initial contents is copied, with the default being `t`.
+
+If you provide initial contents and ask for it not to be copied the list will be destructively modified.
+
+**`collect-into`** collects into a collector.  It has two positional arguments:
+
+* `collector` is the collector;
+* `value` is the object to collect.
+
+It returns its second argument.
+
+**`collector-contents`** returns the contents of a collector: the list being collected by that collector.  The collector can still be used after this, and the list returned by `collector-contents` will be destructively modified in that case.
+
+### Notes on explicit collectors
+Surprising things can happen if you share a single list between more than one collector without copying it:
+
+```lisp
+> (let ((c1 (make-collector)))
+    (collect-into c1 1)
+    (collect-into c1 2)
+    (print (collector-contents c1))
+    (let ((c2 (make-collector :initial-contents (collector-contents c1)
+                              :copy nil)))
+      (collect-into c2 3)
+      (print (collector-contents c1))
+      (print (collector-contents c2))
+      (collect-into c1 4)
+      (print (collector-contents c1))
+      (print (collector-contents c2))
+      (values)))
+
+(1 2)
+(1 2 3)
+(1 2 3)
+(1 2 4)
+(1 2 4)
+```
+
+Generally you don't want to do this unless you know exactly what you're doing, when it can be, perhaps, useful.
+
+The collector objects made by `make-collector` are conses, but I reserve the right to change their representation in the future: don't assume they will always be conses.
+
 ### Package, module
 `collecting` lives in `org.tfeb.hax.collecting` and provides `:org.tfeb.hax.collecting`.
 
@@ -284,10 +335,10 @@ A long time ago I did some benchmarks of `wrapping-standard` and found no observ
 
 ## Applicative iteration: `iterate`
 I've always liked Scheme's named-`let` construct.  It's pretty easy to provide a shim around `labels` in CL which is syntactically the same, but since CL doesn't promise to turn tail calls into jumps, it may cause stack overflows.  When I wrote `iterate` I was still using, part of the time, a Symbolics LispM, and they *didn't* turn tail calls into jumps.  So I wrote this little hack which, if it knows that the implementation does not handle tail-call elimination, and if the name of the local function contains `loop` (in any case) will compile 'calls' to it as explicit jumps.  Otherwise it turns them into the obvious `labels` construct.
-  
-Well, that's what it used to do: the flag which controls whether it thinks an implementation supports tail-call elimination is now always set to true, which means it will always create correct code, even if that code may cause stack overflows on implementations which don't eliminate tail calls[^5].  The old code is still there in case anyone wants to look at it.
 
-There is a single macro: **`iterate`**[^6]:
+Well, that's what it used to do: the flag which controls whether it thinks an implementation supports tail-call elimination is now always set to true, which means it will always create correct code, even if that code may cause stack overflows on implementations which don't eliminate tail calls[^6].  The old code is still there in case anyone wants to look at it.
+
+There is a single macro: **`iterate`**[^7]:
 
 ```lisp
 (iterate foo ((x 1)
@@ -313,7 +364,7 @@ Combined with `collecting`, `iterate` provides a surprisingly pleasant minimalis
 `iterate` lives in `org.tfeb.hax.iterate` and provides `:org.tfeb.hax.iterate`.
 
 ## Local dynamic state: `dynamic-state`
-Dynamic binding is something you don't want very often, but you always end up wanting it somewhere: when programming in languages such as Python I've ended up having to reinvent dynamic binding[^7].
+Dynamic binding is something you don't want very often, but you always end up wanting it somewhere: when programming in languages such as Python I've ended up having to reinvent dynamic binding[^8].
 
 But quite often what you really want is not *global* special variables – variables which exist at the top-level – but *local* special variables, which exist only in some dynamic scope.  This is easy to do in CL:
 
@@ -408,7 +459,7 @@ Error: %errs% is not a valid dynamic state variable for with-error-count
 `dynamic-state` lives in `org.tfeb.hax.dynamic-state` and provides `:org.tfeb.hax.dynamic-state`.
 
 ## Memoizing functions: `memoize`
-Memoization is a clever trick invented by Donald Michie[^8], and described in [Wikipedia](https://en.wikipedia.org/wiki/Memoization "Memoization").  By remembering the results of calls to the function, it can hugely increase performance of certain kinds of recursive function.  As an example
+Memoization is a clever trick invented by Donald Michie[^9], and described in [Wikipedia](https://en.wikipedia.org/wiki/Memoization "Memoization").  By remembering the results of calls to the function, it can hugely increase performance of certain kinds of recursive function.  As an example
 
 ```lisp
 (defun fibonacci (n)
@@ -577,7 +628,7 @@ Because I got annoyed with `(defclass ... ... ... (:metaclass ...))`, there are 
 - `define-final-class` is exactly the same as `defclass` with  a suitable `final-class` metaclass option.
 
 ### A note on the MOP
-`abstract-classes` needs a tiny bit of the MOP.  For most platforms it uses [Closer to MOP](https://github.com/pcostanza/closer-mop "Closer to MOP") to avoid having to have implementation-dependent code.  However for platforms where `closer-mop:standard-class` is not `cl:standard-class`, `defclass` will, by default, create classes whose metaclass is `cl:standard-class`, while the `validate-superclass` methods will refer to `closer-mop:standard-class`[^9]  In the implementations I use where that is true I've relied on the implementation's MOP.  Currently this means LispWorks, although there may be others.
+`abstract-classes` needs a tiny bit of the MOP.  For most platforms it uses [Closer to MOP](https://github.com/pcostanza/closer-mop "Closer to MOP") to avoid having to have implementation-dependent code.  However for platforms where `closer-mop:standard-class` is not `cl:standard-class`, `defclass` will, by default, create classes whose metaclass is `cl:standard-class`, while the `validate-superclass` methods will refer to `closer-mop:standard-class`[^10]  In the implementations I use where that is true I've relied on the implementation's MOP.  Currently this means LispWorks, although there may be others.
 
 ### Package, module
 `abstract-classes` lives in `org.tfeb.hax.abstract-classes` and provides `:org.tfeb.hax.abstract-classes`.
@@ -904,7 +955,7 @@ It's a little fiddly in CL to define global functions with non-empty lexical env
       (incf c))))
 ```
 
-Is problematic because the function definition will not generally be known about at compile-time.  It's also ugly, compared with the equivalent in Scheme[^10]:
+Is problematic because the function definition will not generally be known about at compile-time.  It's also ugly, compared with the equivalent in Scheme[^11]:
 
 ```lisp
 (define counter
@@ -1136,7 +1187,7 @@ I thought about using `_` (or symbols with that name) as the 'ignore this bindin
 `binding` lives in `org.tfeb.hax.binding`and provides `:org.tfeb.hax.binding`.  `binding` depends on `collecting` and `iterate` at compile and run time.  If you load it as a module then, if you have [`require-module`](https://github.com/tfeb/tfeb-lisp-tools#requiring-modules-with-searching-require-module "require-module"), it will use that to try and load them if they're not there.  If it can't do that and they're not there you'll get a compile-time error.
 
 ## Special strings: `stringtable`
-`format` has a very useful feature: there is a special format control 'tilde newline' which will cause `format` to skip both the newline and any following whitespace characters[^11].  This makes writing long format control strings much easier, which is useful since format control strings do tend to be long.  You can, then, use `(format nil ...)` as a way of simply creating a string with, if you want, newlines being ignored.
+`format` has a very useful feature: there is a special format control 'tilde newline' which will cause `format` to skip both the newline and any following whitespace characters[^12].  This makes writing long format control strings much easier, which is useful since format control strings do tend to be long.  You can, then, use `(format nil ...)` as a way of simply creating a string with, if you want, newlines being ignored.
 
 I wanted to do something that was both less and more than this: I wanted a way of writing literal strings such that it was possible to, for instance, ignore newlines to help source formatting, but  *without* involving `format` so I didn't have to worry about all the other format controls, or about explicitly trying to make sure `format` got called before runtime to avoid overhead.  I also wanted the possibility of being able to define my own special handlers in such strings, with all of this working at read time.
 
@@ -1275,7 +1326,7 @@ As mentioned above, a lot of the interface is trying to mirror the standard read
 
 I've talked about things 'being an error' above: in fact in most (I hope all) cases suitable conditions are signaled
 
-Stringtables are intended to provide a way of reading literal strings with some slightly convenient syntax[^12]: it is *not* a system for, for instance, doing some syntactically-nicer or more extensible version of what `format` does.  There are other things which do that, I'm sure.
+Stringtables are intended to provide a way of reading literal strings with some slightly convenient syntax[^13]: it is *not* a system for, for instance, doing some syntactically-nicer or more extensible version of what `format` does.  There are other things which do that, I'm sure.
 
 Originally the default delimiter for `make-stringtable-readtable` was `#\"`, as it is now .  For a while it was `#\/`, because I worried that `#"..."` would be likely to clash with other hacks,  but  `#/.../` finally seemed too obvious a syntax fir regular expressions to use for this.  You can always choose what you want to have.
 
@@ -1283,7 +1334,7 @@ Originally the default delimiter for `make-stringtable-readtable` was `#\"`, as 
 `stringtable` lives in `org.tfeb.hax.stringtable` and provides `:org.tfeb.hax.stringtable`.  `stringtable` depends on `collecting` and `iterate` at compile and run time.  If you load it as a module then, if you have [`require-module`](https://github.com/tfeb/tfeb-lisp-tools#requiring-modules-with-searching-require-module "require-module"), it will use that to try and load them if they're not there.  If it can't do that and they're not there you'll get a compile-time error.
 
 ## Object accessors: `object-accessors`
-`with-accessors` & `with-slots` are pretty useful macros.  Since `symbol-macrolet` exists it's pretty easy to provide a similar facility for accessor functions for completely arbitrary objects.  That's what `with-object-accessors` does: it does exactly what `with-accessors` does, but for completely arbitrary objects and functions[^13].  As an example:
+`with-accessors` & `with-slots` are pretty useful macros.  Since `symbol-macrolet` exists it's pretty easy to provide a similar facility for accessor functions for completely arbitrary objects.  That's what `with-object-accessors` does: it does exactly what `with-accessors` does, but for completely arbitrary objects and functions[^14].  As an example:
 
 ```lisp
 (defun foo (c)
@@ -1325,20 +1376,22 @@ The TFEB.ORG Lisp hax are copyright 1989-2021 Tim Bradshaw.  See `LICENSE` for t
 
 [^4]:	Once upon a time they were local macros, because I didn't trust ancient CL compilers to inline functions, with good reason I think.
 
-[^5]:	If you are using such an implementation, well, sorry.
+[^5]:	Information on Interlisp can be found at [interlisp.org](https://interlisp.org/), and the Interlisp-D reference manual is [here](https://interlisp.org/docs/IRM.pdf) (PDF link).
 
-[^6]:	`iterate` was once called `taglet` and given that it's not particularly about iteration that might be a better name for it: I'm not going to change it back now though.
+[^6]:	If you are using such an implementation, well, sorry.
 
-[^7]:	 Fortunately, and a bit surprisingly to me, Python has facilities which let you do this fairly pleasantly.  Something on my todo list is to make this implementation public.
+[^7]:	`iterate` was once called `taglet` and given that it's not particularly about iteration that might be a better name for it: I'm not going to change it back now though.
 
-[^8]:	See [* 'Memo' Functions and Machine Learning*](https://doi.org/10.1038%2F218019a0 "'Memo' Functions and Machine Learning"), Donald Michie, Nature 218 (5136): 19–22.  [PDF copy](https://www.cs.utexas.edu/users/hunt/research/hash-cons/hash-cons-papers/michie-memo-nature-1968.pdf "'Memo' Functions and Machine Learning").
+[^8]:	 Fortunately, and a bit surprisingly to me, Python has facilities which let you do this fairly pleasantly.  Something on my todo list is to make this implementation public.
 
-[^9]:	And I was not willing to put in explicit extra methods for `validate-superclass` for `cl:standard-class` since the whole purpose of using Closer to MOP was to avoid that kind of nausea.
+[^9]:	See [* 'Memo' Functions and Machine Learning*](https://doi.org/10.1038%2F218019a0 "'Memo' Functions and Machine Learning"), Donald Michie, Nature 218 (5136): 19–22.  [PDF copy](https://www.cs.utexas.edu/users/hunt/research/hash-cons/hash-cons-papers/michie-memo-nature-1968.pdf "'Memo' Functions and Machine Learning").
 
-[^10]:	In fact, Racket.
+[^10]:	And I was not willing to put in explicit extra methods for `validate-superclass` for `cl:standard-class` since the whole purpose of using Closer to MOP was to avoid that kind of nausea.
 
-[^11]:	Or, optionally, not to skip the newline but to skip any whitespace following it.
+[^11]:	In fact, Racket.
 
-[^12]:	As an example of this, it would be quite possible to define a special handler which meant that, for instance `#/this is ~U+1234+ an arbitrary Unicode character/`would work.
+[^12]:	Or, optionally, not to skip the newline but to skip any whitespace following it.
 
-[^13]:	It's quite possible that `with-accessors` will work for completely arbitrary objects and accessors already of course, but I don't think you can portably rely on this.
+[^13]:	As an example of this, it would be quite possible to define a special handler which meant that, for instance `#/this is ~U+1234+ an arbitrary Unicode character/`would work.
+
+[^14]:	It's quite possible that `with-accessors` will work for completely arbitrary objects and accessors already of course, but I don't think you can portably rely on this.

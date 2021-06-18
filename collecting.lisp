@@ -3,9 +3,9 @@
 ;; Description       - Collecting lists forwards
 ;; Author            - Tim Bradshaw (tfb at lostwithiel)
 ;; Created On        - 1989
-;; Last Modified On  - Mon Jan 25 20:14:09 2021
+;; Last Modified On  - Fri Jun  4 16:40:01 2021
 ;; Last Modified By  - Tim Bradshaw (tfb at kingston.fritz.box)
-;; Update Count      - 17
+;; Update Count      - 18
 ;; Status            - Unknown
 ;; 
 ;; $Id$
@@ -35,7 +35,10 @@
   (:export #:collecting
           #:collect
           #:with-collectors
-          #:with-accumulators))
+          #:with-accumulators
+          #:make-collector
+          #:collector-contents
+          #:collect-into))
 
 (in-package :org.tfeb.hax.collecting)
 
@@ -92,14 +95,14 @@ secret tail pointers and so should be efficient."
 
 This defines some local functions which accumulate things as described
 by ACCUMULATORS.  Each accumulator is given as either a simple
-specifation or a more extensible one which allows more options.
+specification or a more extensible one which allows more options.
 
 A simple specification is (name operator &optional initially), where
 name is the name of the local accumulator function, operator names the
 operator and initially, if given is the initial value.
 
 operator denotes (it's a symbol or a lambda expression) a function
-wwhich can take zero or two arguments.  If there is no initial value
+which can take zero or two arguments.  If there is no initial value
 it is called with no arguments to initialise the accumulator.
 Otherwise it will be called, each time the accumulator function is
 called, with two arguments: the current value of the accumulator and
@@ -182,3 +185,44 @@ isn't a symbol of lambda expression" a))
                                  `(,returner ,vn)
                                vn))
                            vns returners))))))
+
+;;;; Something more like Interlisp-D's DOCOLLECT / ENDCOLLECT / TCONC
+;;; See interlisp.org/docs/IRM.pdf
+;;;
+
+(defun make-collector (&key (initial-contents '() initial-contents-p)
+                            (copy t))
+  "Make a collector object into which things can be collected.
+
+INITIAL-CONTENTS, if given it the initial contents of the object, a
+list.
+
+COPY (default true) means that the initial contents will be copied.
+If it is false, then the initial contents will be destructively
+modified by collection.
+
+The implementation of collectors is unspecified, but they're obviously
+just conses with a tail pointer in the cdr.  See TCONC in the IRM."
+  (if initial-contents-p
+      (let ((ic (if copy (copy-list initial-contents) initial-contents)))
+        (cons ic (last ic)))
+    (cons nil nil)))
+
+(defun collector-contents (collector)
+  "Return the contents of a collector.
+
+The collector can be used after this but the returned contents will be
+destructively modified in that case."
+  (car collector))
+
+(defun collect-into (collector value)
+  "Collect VALUE into COLLECTOR, returning VALUE.
+
+This is Interlisp's TCONC."
+  (let ((it (list value)))
+    (if (null (cdr collector))
+        (setf (car collector) it
+              (cdr collector) it)
+      (setf (cdr (cdr collector)) it
+            (cdr collector) it))
+    value))
