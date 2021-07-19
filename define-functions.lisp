@@ -90,7 +90,7 @@ function."
                          collect `(setf (documentation ',n 'function)
                                         ,d))))
           ;; listy case
-          `(let ((flist `(list ,@fns/form)))
+          `(let ((flist (list ,@fns/form)))
              (unless (= (length flist) ,(length names))
                (error "expected ~D fns, got ~D"
                       ,(length names) (length flist)))
@@ -183,7 +183,7 @@ Note that macro functions all take exactly two arguments."
                          collect `(setf (documentation ',n 'function)
                                         ,d))))
           ;; listy case
-          `(let ((flist `(list ,@fns/form)))
+          `(let ((flist (list ,@fns/form)))
              (unless (= (length flist) ,(length names))
                (error "expected ~D fns, got ~D"
                       ,(length names) (length flist)))
