@@ -5,11 +5,12 @@
 
 (defsystem "org.tfeb.hax"
   :description "TFEB hax"
-  :version "3.0.0"
+  :version "4.0.0"
   :author "Tim Bradshaw"
   :license "MIT"
   :homepage "https://github.com/tfeb/tfeb-lisp-hax"
   :depends-on (#-LispWorks "closer-mop")
+  :in-order-to ((test-op (load-op "org.tfeb.hax/test")))
   :components
   ((:file "collecting")
    (:file "wrapping-standard")
@@ -35,3 +36,16 @@
                  "cs-forms" "read-package" "comment-form"
                  "define-functions" "trace-macroexpand"
                  "binding" "stringtable" "object-accessors"))))
+
+(defsystem "org.tfeb.hax/test"
+  :description "TFEB hax tests"
+  :version "4.0.0"
+  :author "Tim Bradshaw"
+  :license "MIT"
+  :homepage "https://github.com/tfeb/tfeb-lisp-hax"
+  :depends-on ("org.tfeb.hax" "parachute")
+  :pathname "test/"
+  :serial t
+  :components
+  ((:file "test-binding")
+   (:file "test-iterate")))
