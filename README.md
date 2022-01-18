@@ -22,7 +22,7 @@ Initially I was using a fairly strict version of [semantic versioning](https://s
 ### Naming conventions
 All of these tools make use of *domain-structured names*: packages, modules, features and so on have names which start with a DNS domain name in reverse order and then may continue to divide further.  In this case the prefix is `org.tfeb.hax`: `org.tfeb` is the DNS component and `hax` is the division within the DNS part.  See [the TFEB.ORG tools documentation](https://github.com/tfeb/tfeb-lisp-tools#naming-conventions "TFEB.ORG tools / Naming conventions") for a little more on this.
 
-----
+---
 
 ## Collecting lists forwards and accumulating: `collecting`
 This is the oldest hack I think, dating back at least to 1989 and perhaps before that.  It's also probably the most useful.
@@ -197,6 +197,45 @@ This keeps the state in a cons in the obvious way, and then uses a returner func
 
 It's arguably the case that the accumulator functions should return the current value of the accumulator.  This is incompatible with what the list collector functions do, but perhaps might be more useful.  But, in fact, the right thing in that case would be for them to return what the returner function returns (because the accumulator value might be some internal state, as it is with the implementation of a version of `collecting`.  And I wanted to be able to assume that the returner function is called exactly once, so it's allowed to be destructive.
 
+### Collecting or accumulating multiple values: `collecting-values`
+Within the `with-collectors` or `with-accumulators` you can use this macro to collect multiple values.  It has two cases:
+
+```lisp
+(with-collectors (a b)
+  ...
+  (collecting-values (a b) (f ...))
+  ...)
+```
+
+will collect two values from `(f ...)`: it is equivalent (and expands into):
+
+```lisp
+(multiple-value-bind (a b) (f ...)
+  (a a)
+  (b b))
+```
+
+On the other hand
+
+```lisp
+(with-collectors (a b)
+  ...
+  (collecting-values (a b)
+    (f ...)
+    (g ...))
+  ...)
+```
+
+is equivalent to
+
+```lisp
+(multiple-value-bind (a b) (values (f ...) (g ...))
+  (a a)
+  (b b))
+```
+
+`with-collectors` doesn't actually care about whether it's within a suitable form: it just does its thing regardless.
+
 ### Explicit collectors
 `collecting` and friends were inspired by facilities in Interlisp-D[^5], and specifically by `TCONC`, `DOCOLLECT` and `ENDCOLLECT`.  These collected things by maintaining an explicit cons where the car was the list being collected and the cdr was the last cons of that list.  The nice thing about this is that these conses can be passed around as variables.  So, at long last, here are equivalents of those functions in CL.
 
@@ -214,7 +253,9 @@ If you provide initial contents and ask for it not to be copied the list will be
 
 It returns its second argument.
 
-**`collector-contents`** returns the contents of a collector: the list being collected by that collector.  The collector can still be used after this, and the list returned by `collector-contents` will be destructively modified in that case.
+**`collector-contents`** returns the contents of a collector: the list being collected by that collector.   It has an optional argument, `appending`: if given this is appended to the value returned, either by using the tail pointer to modify the last cons of the list being built or by simply returning `appending` directly if nothing has been collected.  If `appending` is not given, the collector can still be used after this, and the list returned by `collector-contents` will be destructively modified in that case.  If `appending` is given then the collector is generally junk as the tail pointer is not updated: doing so would involve traversing `appending` and the whole point of this hack is to avoid doing that.
+
+**`nconc-collectors`** destructively concatenates together one or more collectors, returning the first.   After this is called all of the collectors share a tail pointer and the head pointers of them point at the appropriate places on the combined list.  It is safe to update any one of the collectors, but after doing so the tail pointers of all the remaining ones will inevitably be junk.  So this is most useful as a fast way to, for instance, concatenate a collector onto another after which it is never used again.
 
 ### Notes on explicit collectors
 Surprising things can happen if you share a single list between more than one collector without copying it:
@@ -244,6 +285,8 @@ Surprising things can happen if you share a single list between more than one co
 Generally you don't want to do this unless you know exactly what you're doing, when it can be, perhaps, useful.
 
 The collector objects made by `make-collector` are conses, but I reserve the right to change their representation in the future: don't assume they will always be conses.
+
+The optional second argument to `collector-contents` is a bit sneaky but can be really useful.
 
 ### Package, module
 `collecting` lives in `org.tfeb.hax.collecting` and provides `:org.tfeb.hax.collecting`.
@@ -338,7 +381,7 @@ I've always liked Scheme's named-`let` construct.  It's pretty easy to provide a
 
 Well, that's what it used to do: for a while I simply set the flag which controls whether it thinks an implementation supports tail-call elimination unilaterally to true, which means it will always create correct code, even if that code may cause stack overflows on implementations which don't eliminate tail calls[^6].  From 21st August 2021 the old code is now gone altogether (it is still available for inspection in old commits).
 
-For a very long time I was confused about variable binding in `iteratet`: I thought it was like i`let*`, not like `let` although I'm not sure why.  In the previous version of this code there was even an `iterate*` macro which claimed to be like `let*` and an `iterate` which claimed to be like `let`.  But that was all just confusion, so `iterate*` is gone again.
+For a very long time I was confused about variable binding in `iterate`: I thought it was like `let*`, not like `let` although I'm not sure why.  In the previous version of this code there was even an `iterate*` macro which claimed to be like `let*` and an `iterate` which claimed to be like `let`.  But that was all just confusion, so `iterate*` is gone again.
 
 ```lisp
 (iterate foo ((x 1)
@@ -1362,11 +1405,11 @@ There is absolutely nothing special about `with-object-accessors`: it's just the
 ### Package, module
 `object-accessors` lives in `org.tfeb.hax.object-accessors` and provides `:org.tfeb.hax.object-accessors`.
 
-----
+---
 
 The TFEB.ORG Lisp hax are copyright 1989-2021 Tim Bradshaw.  See `LICENSE` for the license.
 
-----
+---
 
 [^1]:	The initial documentation for these hacks was finished on 20210120 at 18:26 UTC: one hour and twenty-six minutes after Joe Biden became president of the United States.
 

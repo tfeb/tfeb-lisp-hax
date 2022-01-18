@@ -5,7 +5,7 @@
 
 (defsystem "org.tfeb.hax"
   :description "TFEB hax"
-  :version "4.0.0"
+  :version "4.1.0"
   :author "Tim Bradshaw"
   :license "MIT"
   :homepage "https://github.com/tfeb/tfeb-lisp-hax"
@@ -45,7 +45,7 @@
   :homepage "https://github.com/tfeb/tfeb-lisp-hax"
   :depends-on ("org.tfeb.hax" "parachute")
   :pathname "test/"
-  :serial t
   :components
   ((:file "test-binding")
-   (:file "test-iterate")))
+   (:file "test-iterate")
+   (:file "test-collecting")))

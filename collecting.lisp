@@ -35,9 +35,11 @@
   (:export #:collecting
           #:collect
           #:with-collectors
+          #:collecting-values
           #:with-accumulators
           #:make-collector
           #:collector-contents
+          #:nconc-collectors
           #:collect-into))
 
 (in-package :org.tfeb.hax.collecting)
@@ -86,6 +88,29 @@ secret tail pointers and so should be efficient."
          (declare (inline ,@collectors))
          ,@forms)
        (values ,@cvns))))
+
+(defmacro collecting-values ((&rest collectors) &body form/s)
+  ;; Based on an idea by Zyni
+  "Collect multiple values withing COLLECTING
+
+COLLECTORS should be the names of bound collectors.  If there is a
+single other argument this is assumed to be a form which will return
+multiple values.  There should either be a single form in the body
+which is assumed to return multiple values, or exacly as many forms as
+there are collectors with one value being collected from each.
+
+Return the values collected."
+  (let ((cl (length collectors))
+        (fl (length form/s)))
+    (unless (or (= fl 1)
+                (= fl cl))
+      (error "need either a single form or as many forms as collectors"))
+    (if (= cl 1)
+        `(,(first collectors)  ,(first form/s))
+      `(multiple-value-bind ,collectors ,(if (= fl 1)
+                                             (first form/s)
+                                           `(values ,@form/s))
+         (values ,@(mapcar #'list collectors collectors))))))
 
 (defmacro with-accumulators ((&rest accumulators) &body forms)
   ;; A general version of WITH-COLLECTORS.  I don't think a dedcated
@@ -208,12 +233,26 @@ just conses with a tail pointer in the cdr.  See TCONC in the IRM."
         (cons ic (last ic)))
     (cons nil nil)))
 
-(defun collector-contents (collector)
-  "Return the contents of a collector.
+(defun collector-contents (collector &optional (appending nil appendingp))
+  "Return the contents of a collector
 
-The collector can be used after this but the returned contents will be
-destructively modified in that case."
-  (car collector))
+If APPENDING is given, append this to the collector (without copying
+it) first.  APPENDING does not need to be a proper list or a list at
+all: the last cons of the collector will be made to be APPENDING, and
+if nothing has been collected previously APPENDING itself will be
+returned.
+
+If APPENDING is not given, then the collector can be used after this
+but the returned contents will be destructively modified in that case.
+If APPENDING is given the collector contents will generally be junk as
+the tail pointer is not updated."
+  (if (not appendingp)
+      (car collector)
+    (if (null (cdr collector))
+        appending
+      (progn
+        (setf (cdr (cdr collector)) appending)
+        (car collector)))))
 
 (defun collect-into (collector value)
   "Collect VALUE into COLLECTOR, returning VALUE.
@@ -226,3 +265,29 @@ This is Interlisp's TCONC."
       (setf (cdr (cdr collector)) it
             (cdr collector) it))
     value))
+
+(defun nconc-collectors (collector &rest collectors)
+  ;; Note unlike APPEND it makes no sense to call this with no
+  ;; collectors at all: what should it return in that case (perhaps a
+  ;; new collector)?
+  (declare (dynamic-extent collectors))
+
+  "Destructively concatenate one or more collectors, returning the first
+
+All the collectors share a tail pointer after this is done, while
+their head pointers point at appropriate points on the NCONCed list.
+You can then collect more into any one of them but this will make the tail
+pointers of all the others junk."
+  (if (null collectors)
+      collector
+    (labels ((ncc (c a more)
+               (if (null more)
+                   (progn
+                     (if (null (cdr c))
+                         (setf (car c) (car a)
+                               (cdr c) (cdr a))
+                       (setf (cdr (cdr c)) (car a)
+                             (cdr c) (cdr a)))
+                     c)
+                 (ncc c (ncc a (first more) (rest more)) '()))))
+      (ncc collector (first collectors) (rest collectors)))))
