@@ -3,9 +3,6 @@
 ;; Description       - Collecting lists forwards
 ;; Author            - Tim Bradshaw (tfb at lostwithiel)
 ;; Created On        - 1989
-;; Last Modified On  - Fri Jun  4 16:40:01 2021
-;; Last Modified By  - Tim Bradshaw (tfb at kingston.fritz.box)
-;; Update Count      - 18
 ;; Status            - Unknown
 ;; 
 ;; $Id$
@@ -24,7 +21,7 @@
 ;;;
 
 ;;; These macros hardly seem worth copyrighting, but are copyright
-;;; 1989-2012, 2021 by me, Tim Bradshaw, and may be used for any
+;;; 1989-2012, 2021-2022 by me, Tim Bradshaw, and may be used for any
 ;;; purpose whatsoever by anyone. There is no warranty whatsoever. I
 ;;; would appreciate acknowledgement if you use this in anger, and I
 ;;; would also very much appreciate any feedback or bug fixes.
@@ -39,8 +36,9 @@
           #:with-accumulators
           #:make-collector
           #:collector-contents
+          #:collect-into
           #:nconc-collectors
-          #:collect-into))
+          #:nconc-collector-onto))
 
 (in-package :org.tfeb.hax.collecting)
 
@@ -245,7 +243,10 @@ returned.
 If APPENDING is not given, then the collector can be used after this
 but the returned contents will be destructively modified in that case.
 If APPENDING is given the collector contents will generally be junk as
-the tail pointer is not updated."
+the tail pointer is not updated.
+
+See NCONC-COLLECTOR-ONTO for a function which appends a list to a
+pointer and updates the tail pointer appropriately."
   (if (not appendingp)
       (car collector)
     (if (null (cdr collector))
@@ -291,3 +292,18 @@ pointers of all the others junk."
                      c)
                  (ncc c (ncc a (first more) (rest more)) '()))))
       (ncc collector (first collectors) (rest collectors)))))
+
+(defun nconc-collector-onto (collector onto)
+  "Append ONTO to the end of COLLECTOR, uodating the tail pointer
+
+This does not copy ONTO, so it will be modified if any more elements
+are collected into COLLECTOR.  Takes time proportional to the length
+of ONTO.
+
+Return the collector."
+  (if (null (cdr collector))
+      (setf (car collector) onto
+            (cdr collector) (last onto))
+    (setf (cdr (cdr collector)) onto
+          (cdr collector) (last onto)))
+  collector)

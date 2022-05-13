@@ -1,5 +1,5 @@
 # [TFEB.ORG Lisp hax](https://github.com/tfeb/tfeb-lisp-hax "TFEB.org Lisp hax")
-This repo contains a collection of small Common Lisp hacks I've written over the last thirty-odd years[^1].  Some of them are genuinely useful, some of them are little more than toys written long ago to prove a point on `comp.lang.lisp`.  Although they are here bundled together into an ASDF system that's only for convenience: most of them are independent of each other.  I will probably add more over time.
+This repo contains a collection of small Common Lisp hacks I've written over the last thirty-odd years[^1].  Some of them are genuinely useful, some of them are little more than toys written long ago to prove a point on `comp.lang.lisp`.   Here, a *hack* is something that might be useful *in* a program rather than a [tool](../tfeb-lisp-tools/ "TFEB.ORG Lisp tools") to help manage program construction.  Although they are here bundled together into an ASDF system that's only for convenience: most of them are independent of each other.  I will probably add more over time.
 
 ## General
 ### Modules
@@ -253,9 +253,24 @@ If you provide initial contents and ask for it not to be copied the list will be
 
 It returns its second argument.
 
-**`collector-contents`** returns the contents of a collector: the list being collected by that collector.   It has an optional argument, `appending`: if given this is appended to the value returned, either by using the tail pointer to modify the last cons of the list being built or by simply returning `appending` directly if nothing has been collected.  If `appending` is not given, the collector can still be used after this, and the list returned by `collector-contents` will be destructively modified in that case.  If `appending` is given then the collector is generally junk as the tail pointer is not updated: doing so would involve traversing `appending` and the whole point of this hack is to avoid doing that.
+**`collector-contents`** returns the contents of a collector: the list being collected by that collector.   It has an optional argument, `appending`: if given this is appended to the value returned, either by using the tail pointer to modify the last cons of the list being built or by simply returning `appending` directly if nothing has been collected.  If `appending` is not given, the collector can still be used after this, and the list returned by `collector-contents` will be destructively modified in that case.  If `appending` is given then the collector is generally junk as the tail pointer is not updated: doing so would involve traversing `appending` and the whole point of this hack is to avoid doing that.  See `nconc-collector-onto` for a function which *does* update the tail pointer.
 
 **`nconc-collectors`** destructively concatenates together one or more collectors, returning the first.   After this is called all of the collectors share a tail pointer and the head pointers of them point at the appropriate places on the combined list.  It is safe to update any one of the collectors, but after doing so the tail pointers of all the remaining ones will inevitably be junk.  So this is most useful as a fast way to, for instance, concatenate a collector onto another after which it is never used again.
+
+**`nconc-collector-onto`** attaches a list to the end of a collector, updating the tail pointer of  the collector to point to the end of the list.  It returns the collector.  The list is not copied by this function, so collecting anything else into the collector will mutate it.  `nconc-collector-onto` necessarily takes time proportional to the length of the list:
+
+```lisp
+(nconc-collector-onto c l)
+```
+
+is equivalent to
+
+```lisp
+(dolist (e l c)
+  (collect-into c e))
+```
+
+except that no new list structure is created.  See `collector-contents` for a function which does not update the tail pointer.
 
 ### Notes on explicit collectors
 Surprising things can happen if you share a single list between more than one collector without copying it:
@@ -1407,7 +1422,7 @@ There is absolutely nothing special about `with-object-accessors`: it's just the
 
 ---
 
-The TFEB.ORG Lisp hax are copyright 1989-2021 Tim Bradshaw.  See `LICENSE` for the license.
+The TFEB.ORG Lisp hax are copyright 1989-2022 Tim Bradshaw.  See `LICENSE` for the license.
 
 ---
 
