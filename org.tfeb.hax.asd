@@ -5,7 +5,7 @@
 
 (defsystem "org.tfeb.hax"
   :description "TFEB hax"
-  :version "4.3.0"
+  :version "5.0.0"
   :author "Tim Bradshaw"
   :license "MIT"
   :homepage "https://github.com/tfeb/tfeb-lisp-hax"
@@ -29,17 +29,24 @@
    (:file "stringtable"
     :depends-on ("collecting" "iterate"))
    (:file "object-accessors")
+   (:file "utilities"
+    :depends-on ("collecting" "iterate"))
+   (:file "simple-loops"
+    :depends-on ("collecting" "iterate" "utilities"))
+   (:file "spam"
+    :depends-on ("simple-loops"))
    (:file "hax-cometh"
     :depends-on ("collecting" "wrapping-standard"
                  "iterate" "dynamic-state" "memoize"
                  "abstract-classes" "singleton-classes"
                  "cs-forms" "read-package" "comment-form"
                  "define-functions" "trace-macroexpand"
-                 "binding" "stringtable" "object-accessors"))))
+                 "binding" "stringtable" "object-accessors"
+                 "utilities" "simple-loops" "spam"))))
 
 (defsystem "org.tfeb.hax/test"
   :description "TFEB hax tests"
-  :version "4.1.1"
+  :version "5.0.0"
   :author "Tim Bradshaw"
   :license "MIT"
   :homepage "https://github.com/tfeb/tfeb-lisp-hax"

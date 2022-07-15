@@ -3,10 +3,9 @@ This repo contains a collection of small Common Lisp hacks I've written over the
 
 ## General
 ### Modules
-Almost all of these hacks are independent modules: they live in their own little packages and are loadable standalone: if you just want one of them then you don't need to drag all the unrelated ones into your environment.  If you put them in the right place, then [`require-module`](https://github.com/tfeb/tfeb-lisp-tools#requiring-modules-with-searching-require-module "require-module") will find and load them for you: this is how I use them.  Exceptions are:
+Almost all of these hacks are independent modules: they live in their own little packages and are loadable standalone: if you just want one of them then you don't need to drag all the unrelated ones into your environment.  If you put them in the right place, then [`require-module`](https://github.com/tfeb/tfeb-lisp-tools#requiring-modules-with-searching-require-module "require-module") will find and load them for you: this is how I use them.  Some modules have dependencies on other modules: these are documented in the documentation below, and those modules will, if `require-module` was present at compile time, load their dependencies when loaded.
 
-- `binding`, which depends on `collecting` and `iterate`, and will try to use `require-module` to load them if they're not already known when it's compiled or loaded.
-- `stringtable`, which depends on  `collecting` and `iterate`, and will attempt the same trick.
+Each of the hacks now has its own little ASDF system declaration which should also declare its dependencies, for people who use ASDF.
 
 The system itself provides `:org.tfeb.hax`: there is no `org.tfeb.hax` package however: each component lives in its own package with names like `org.tfeb.hax.*`.
 
@@ -1420,6 +1419,252 @@ There is absolutely nothing special about `with-object-accessors`: it's just the
 ### Package, module
 `object-accessors` lives in `org.tfeb.hax.object-accessors` and provides `:org.tfeb.hax.object-accessors`.
 
+## Decomposing iteration: `simple-loops`
+Like a lot of people I have mixed feelings about `loop`.  For a long time I thought that, well, if I wasn't going to use `loop`, I'd need some other elaborate iteration system, although perhaps one which was more principled and extensible such as Richard C Waters' [Series](https://github.com/tfeb/series "Series")[^14].  And I am sure the CL community has invented other tools while I've not been watching.
+
+But now I think that this is, perhaps, chasing a mirage: it might be better *not* to have some vast all-encompassing iteration tool, but instead a number of smaller, independent, components.  For a long time I have written
+
+```lisp
+(collecting
+  (dotimes (...)
+    ...
+    (when ...
+      (collect ...)
+    ...))
+```
+
+in preference to `(loop ... when ... collect ... ...)` and `collecting` of course is more general:
+
+```lisp
+(collecting
+  (iterate search (...)
+    ...))
+```
+
+Can collect objects during a completely general recursive search, for instance.
+
+`simple-loops` provides a number of simple loop constructs which can be used with tools like `collecting`, `iterate` and any other tool, as well as a general named escape construct.
+
+**`doing`** and **`doing*`** are like `do` and `do*` except that bindings are more defaulted:
+
+-  `<var>` means `(<var> nil nil)`;
+- `(<var> <init/step>)` means `(<var> <init/step> <init/step>)`;
+- `(<var> <init> <step>)` means what it currently does.
+
+In addition the values returned are both more defaulted and more flexible:
+
+- if no return value is specified then the current values of all the bindings are returned;
+- if a single form is specified then all its values are returned (this is just like `do`);
+- if there are more than a single form, then then all the values from all of them are returned.
+
+To get the same behaviour as, for instance, `(do (...) (<test>) ...)` you therefore need to say `(doing (...) (<test> nil) ...)`: `(doing (...) (<test>) ...)` will return the current values of all the variables.
+
+**`passing`** and **`failing`** are while and until loops which bind variables with the same defaulting as `doing`: `(passing ((x ...) (y ...)) ...)` will iterate until `(and x y)` is true and then return the values of `x` and `y`.  `failing` will iterate until they are *not* all true and then return their values.
+
+**`do-passing`** and **`do-failing`** are like `passing` and `failing` but the test is after the body, so they always iterate at least once.
+
+There are starred forms of all these macros which bind sequentially, for a total of six macros.
+
+**`looping`**  and **`looping*`**  are looping constructs with implicit stepping: `(looping ((a 1) b) ...)` will bind `a` to `1` and `b` to `nil` and then the values of the last form in the body is used to step the values.  There is no termination clause, but there is an implicit block named `nil`  The body of these forms is *not* wrapped in an implicit `tagbody` (it's a `progn` in fact), so you can't jump around in it like you can with `do`.  You can also use `escaping`.  Declarations at the start of the body are lifted to where they belong.  Initial bindings are in parallel for `looping`, in serial for `looping*`.  Here's a program which is not known to halt for all arguments:
+
+```lisp
+(defun collatz (n)
+  (looping ((m n) (c 1))
+    (when (= m 1)
+      (return c))
+    (values (if (evenp m)
+                (/ m 2)
+              (1+ (* m 3)))
+            (+ c 1))))
+```
+
+**`looping/values`** and is a looping construct which use multiple values and then implicit stepping like `looping`.    Variables are bound as follows:
+
+- `(looping/values ((<v> ...) <form>) ...)` will bind the `<v>`s to the multiple values of `<form>`.
+- `(looping/values ((<v> ...) <form> ...) ...)` will bind the `<v>`s to the combined multiple values of all of the `<form>`s.
+
+Once the variables are bound everything is exactly like `looping`: it is only the initial binding which is different.
+
+**`looping/values*`** is like `looping/values` except that multiple sets of variables can be bound, each set being in the scope of all the previous sets.  So
+
+```lisp
+(looping/values* (((a b) (values 1 2))
+                  ((c d) (values 3 a)))
+  (return (values a b c d)))
+```
+
+will evaluate to `1 2 3 1` for instance (and will not loop at all).
+
+**`escaping`** provides a general named escape construct.  `(escaping (<escaper> &rest <defaults>) ...)` binds `<escaper>` as a local function which will immediately return from `escaping`, returning either its arguments as multiple values, or the values of `<defaults>` as multiple values.  The forms in `<defaults>` are not evaluated if they are not used: if they are evaluated they're done in their lexical environment but in the dynamic environment where the escape function is called.
+
+`escaping` is obviously a shim around `(block ... (return-from ...) ...)` and there are the same constraints on scope that blocks have: you can't call the escape function once control has left the form which established it.
+
+The `passing` family of functions *aren't* named `while` because they're not actually `while` loops as the bind variables and also I didn't want to take such a useful and short name: everyone knows what `(while (= x 3) ...)` means.
+
+`passing` and friends expand into `do` and `do*`, not `doing` and `doing*` but they use the same clause-parser that`doing` and `doing*` do so their clauses work the same way.
+
+### Package, module, dependencies
+`simple-loops` lives in `org.tfeb.hax.simple-loops` and provides `:org.tfeb.hax.simple-loops`.  It depends on `collecting`, `iterate`, and `utilities`.  If you load it as a module then, if you have [`require-module`](https://github.com/tfeb/tfeb-lisp-tools#requiring-modules-with-searching-require-module "require-module"), it will use that to try and load them if they're not there.  If it can't do that and they're not there you'll get a compile-time error.
+
+## Simple pattern matching: `spam`
+Quite often when writing robust macros you end up with code which has to protect `destructuring-bind`:
+
+```lisp
+(defmacro fooing ((&rest bindings) &body forms)
+  (let ((effective-bindings
+         (mapcar (lambda (binding)
+                   (cond
+                    ((symbolp binding)
+                     ...)
+                    ((and (listp binding)
+                          (= (length binding 2)))
+                     (destructuring-bind (var val) binding
+                       (unless (symbolp var)
+                         ...)
+                       ...))
+                    ...))
+                 bindings)))
+    ...))
+```
+
+This is painful to write.  A really nice solution to this is `destructuring-match`, a matching version of `destructuring-bind`, which enables pattern-matching macros:
+
+```lisp
+(defmacro fooing ((&rest bindings) &body forms)
+  (let ((effective-bindings
+         (mapcar (lambda (binding)
+                   (destructuring-match binding
+                     ((var)
+                      (:when (symbolp var))
+                      ...)
+                     ((var val)
+                      (:when (symblp var))
+                      ...)
+                     ...))
+                 bindings)))
+    ...))
+```
+
+and of course it's then easy to write `syntax-rules` / `syntax-case` style macros on top of something like this[^15]:
+
+```lisp
+(define-matching-macro fooing
+  ((_ ((var val) . more ) &body forms)
+   ...)
+  (... ...))
+```
+
+Well, in the process of writing `destructuring-match` I found that you really need a lot of predicates to check lambda lists when parsing them before compiling them into code which will match suitable arglists.  So for instance you need to be able to check if the next element is either `&rest` or `&body`, the element after that is a variable name, and the element after *that* is `&key`.  The obvious thing to do was, rather than write all these expressions out by hand, to write predicate *constructors*:
+
+```lisp
+(head-matches (some-of (is '&rest) (is '&body))
+              (var)
+              (is '&key))
+```
+
+will return a predicate which does the above matching:
+
+```lisp
+> (let ((p (head-matches (some-of (is '&rest) (is '&body))
+                         (var)
+                         (is '&key))))
+    (values (funcall p '(&body x &key))
+            (funcall p '(&rest x &key))
+            (funcall p '(&rest x &aux y))
+            (funcall p '(x &aux y))))
+t
+t
+nil
+nil
+```
+
+Finally it is then easy to write a `matching` macro:
+
+```lisp
+(matching llt
+  ((head-matches (some-of (is '&rest) (is '&body))
+                 (var)
+                 (is '&key))
+   ...)
+  ((head-matches (some-of (is '&rest) (is '&body))
+                 (var))
+   ...)
+  ((head-matches (some-of (is '&rest) (is '&body))
+                 (none-of (var)))
+   (error "ill-formed &rest / &body"))
+  ...
+  (otherwise
+   ...))
+```
+
+This approach turns out to be quite pleasant.
+
+### `matching` and `matchp`
+**`matching`** is a `case`-style macro: it successively matches the predicates which are the first element of each clause against an object, until one matches.   A clause like `(otherwise ...)` or `(t ...)` always matches (this means you can't bind a predicate to `otherwise`).  Any function can be used as a predicate:
+
+```lisp
+(matching thing
+  (#'keywordp "keyword")
+  (#'null "null")
+  (#'symbolp "non-null, non-keyword symbol")
+  (otherwise "something else"))
+```
+
+simply expands to the obvious thing:
+
+```lisp
+(let ((#:v thing))
+  (cond ((funcall #'keywordp #:v) "keyword")
+        ((funcall #'null #:v) "null")
+        ((funcall #'symbolp #:v) "non-null, non-keyword symbol")
+        (t "something else")))
+```
+
+Note that the predicates in `matching` clauses are *values* not function designators: you need to say `(matching x (#'keywordp ...) ...)` not `(matching x (keywordp ...) ...)`.
+
+**`matchp`** is a function which checks if a predicate matches: `(matchp thing p)` is simply `(funcall p thing)`.
+
+There is absolutely nothing clever about `matching` or `matchp`: `matching` just makes the syntax easier, and `matchp` exists because it should.
+
+### The predicate constructors
+This is the interesting part: `spam` has a bunch of functions which return useful predicates.
+
+**`head-matches`** returns a predicate which matches a (possibly improper) list the first few of whose elements match the predicates which were the arguments of `head-matches`.  So `(head-matches #'realp #'realp)` will return a predicate which will match `(1 2)`, `(1 3.0 . t)`, but will fail for `()`, `(1)`, `"foo"` and so on.  It is a good way of constructing predicates which look ahead in something being parsed.
+
+**`list-matches`** will return a predicate which matches a proper list whose elements match the predicates which are its arguments.  `(list-matches #'numberp #'keywordp)` will match a two-element list whose elements are a number and a keyword, in that order.
+
+**`list*-matches`** is like `list-matches` but the *last* predicate in its arguments is matched against the tail of the list.  So for instance `(list-matches #'numberp #'consp)` will return a predicate which matches something whose first element is a number and which has at least one more element (but may not be a proper list).
+
+**`cons-matches`** returns a predicate which matches a cons whose car & cdr match its two arguments.
+
+**`list-of`** returns a predicate which matches a proper list each of whose elements matches its single argument.
+
+**`repeating-list-of`** is quite useful: it returns a predicate which matches a proper list which consists of repeating sequences which match its arguments.  So, for instance `(repeating-list-of #'keywordp (any))` will return a predicate which matches a list of keywords & values (see below for `(any)`.
+
+**`is`** returns a predicate which matches (with `eql`) its argument.
+
+**`is-type`** returns a predicate which matches an object of the type given by its argument.
+
+**`any`** returns a predicate which matches anything.
+
+**`var`** returns a predicate which matches a variable: a nonconstant, nonkeyword symbol which is not a lambda list keyword (it is possible that lambda list keywords can be bound as variables, but don't do that).
+
+**`lambda-list-keyword`** returns a predicate which matches a lambda list keyword.
+
+**`some-of`** returns a predicate which matches if any of the predicates which are its arguments match.
+
+**`all-of`** returns a predicate which matches if all of the predicates which are its arguments match.
+
+**`none-of`** returns a predicate which matches if none of the predicates which are its arguments match.
+
+### Notes on `spam`
+It originated as part of a lambda list parser, and betrays that heritage to some extent.
+
+*Any* predicate works: the predicates and predicate combinators it comes with are just the ones I wrote.  Many of the ones that don't exist don't exist because there already *are* predicates which match, for instance, keywords, or the empty list and so on.
+
+### Package, module, dependencies
+`spam` lives in `org.tfeb.hax.spam` and provides `:org.tfeb.hax.spam`.  It requires `simple-loops` and will attempt to load it if `require-module` is present.
+
 ---
 
 The TFEB.ORG Lisp hax are copyright 1989-2022 Tim Bradshaw.  See `LICENSE` for the license.
@@ -1451,3 +1696,7 @@ The TFEB.ORG Lisp hax are copyright 1989-2022 Tim Bradshaw.  See `LICENSE` for t
 [^12]:	As an example of this, it would be quite possible to define a special handler which meant that, for instance `#/this is ~U+1234+ an arbitrary Unicode character/`would work.
 
 [^13]:	It's quite possible that `with-accessors` will work for completely arbitrary objects and accessors already of course, but I don't think you can portably rely on this.
+
+[^14]:	This link is to my own copy.
+
+[^15]:	Of course these macros are still not hygenic.

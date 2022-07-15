@@ -1,9 +1,9 @@
-;;;; Module org.tfeb.hax.abstract-classes of org.tfeb.hax
+;;;; Module org.tfeb.hax.simple-loops of org.tfeb.hax
 ;;;
 
 (in-package :asdf-user)
 
-(defsystem "org.tfeb.hax.abstract-classes"
+(defsystem "org.tfeb.hax.simple-loops"
   :description
   "A subsystem of the TFEB hax"
   :version
@@ -15,6 +15,8 @@
   :homepage
   "https://github.com/tfeb/tfeb-lisp-hax"
   :depends-on
-  ("closer-mop")
+  ("org.tfeb.hax.collecting"
+   "org.tfeb.hax.iterate"
+   "org.tfeb.hax.utilities")
   :components
-  ((:file "abstract-classes")))
+  ((:file "simple-loops")))
