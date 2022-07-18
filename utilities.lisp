@@ -20,6 +20,19 @@
 
 (provide :org.tfeb.hax.utilities)
 
+(defun parse-simple-body (decls/forms)
+  "Parse a body which can not have a docstring
+
+Return two values: a list of declarations and a list of forms"
+  (with-collectors (decl body)
+    (do* ((forms decls/forms (rest forms))
+          (this (first forms) (first forms)))
+         ((null forms))
+      (if (and (consp this)
+               (eql (first this) 'declare))
+          (decl this)
+        (body this)))))
+
 (defun parse-docstring-body (doc/decls/forms)
   "Parse a body that may have a docstring at the start
 
@@ -33,16 +46,3 @@ a list of forms."
       (multiple-value-bind (decls forms)
           (parse-simple-body doc/decls/forms)
         (values nil decls forms))))
-
-(defun parse-simple-body (decls/forms)
-  "Parse a body which can not have a docstring
-
-Return two values: a list of declarations and a list of forms"
-  (with-collectors (decl body)
-    (do* ((forms decls/forms (rest forms))
-          (this (first forms) (first forms)))
-         ((null forms))
-      (if (and (consp this)
-               (eql (first this) 'declare))
-          (decl this)
-        (body this)))))

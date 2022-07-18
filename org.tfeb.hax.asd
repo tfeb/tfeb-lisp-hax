@@ -5,7 +5,7 @@
 
 (defsystem "org.tfeb.hax"
   :description "TFEB hax"
-  :version "5.0.0"
+  :version "5.0.1"
   :author "Tim Bradshaw"
   :license "MIT"
   :homepage "https://github.com/tfeb/tfeb-lisp-hax"

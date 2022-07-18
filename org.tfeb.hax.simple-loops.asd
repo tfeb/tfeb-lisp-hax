@@ -3,11 +3,11 @@
 
 (in-package :asdf-user)
 
-(defsystem "org.tfeb.hax.simple-loops"
+(asdf/parse-defsystem:defsystem "org.tfeb.hax.simple-loops"
   :description
   "A subsystem of the TFEB hax"
   :version
-  "5.0.0"
+  "5.0.1"
   :author
   "Tim Bradshaw"
   :license
