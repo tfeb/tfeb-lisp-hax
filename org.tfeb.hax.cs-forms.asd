@@ -7,7 +7,7 @@
   :description
   "A subsystem of the TFEB hax"
   :version
-  "5.0.1"
+  "5.0.2"
   :author
   "Tim Bradshaw"
   :license

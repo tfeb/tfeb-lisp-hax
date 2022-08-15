@@ -776,7 +776,7 @@ The main use of this might be to map between names in a language which uses lots
 ### Package, module
 `cs-forms` lives in `org.tfeb.hax.cs-forms` and provides `:org.tfeb.hax.cs-forms`.
 
-### Reading forms in a package: `read-package`
+## Reading forms in a package: `read-package`
 Symbolics LispMs had a nice syntax where package prefixes applied generally: `foo:(x y z)` meant either the same as `(foo:x foo:y foo:z)` or possibly `(foo::x foo::y foo::z)`, I'm not sure now.  This can't be done in standard CL as by the time the package prefix has been read you're already committed to reading a symbol.  But this hack lets you do something similar:
 
 ```lisp
@@ -802,6 +802,8 @@ This all works by a fairly nasty hack: the package is read as (probably) a symbo
 - `at` is the dispatching macro character which should be used (default `#\@`).
 
  It may be that some current CL implementations can do the native Symbolics-style thing too, and if they can it's probably better than this hack.
+
+When `*read-suppress*` is true, the reader simply calls `read` twice and returns `nil`.
 
 ### Package, module
 `read-package` lives in `org.tfeb.hax.read-package` and provides `:org.tfeb.hax.read-package`.
@@ -1295,7 +1297,7 @@ The algorithm for reading a special string is:
 - if is is a special character, then read the next character
 	- if it is the delimiter this is an error (if you want to escape the delimiter, use the escape character);
 	- otherwise find either its handler or the fallback handler for that special character, then call the handler with four arguments: the special character, the character after it, the delimiter and the stream;
-	- the handler function should return: a character which is accumulated; a list of characters which are accumulated (this list may be empty); or a string, the characters of which are accumulate.  Any other return value is an error.
+	- the handler function should return: a character which is accumulated; a list of characters which are accumulated (this list may be empty); or a string, the characters of which are accumulated.  Any other return value is an error.
 
 An end of file before an unescaped delimiter is reached is an error.
 
@@ -1381,7 +1383,9 @@ This function relies on some slightly non-standard characters: I think they exis
 ### Notes
 As mentioned above, a lot of the interface is trying to mirror the standard readtable interface, which is why it's a bit ugly.
 
-I've talked about things 'being an error' above: in fact in most (I hope all) cases suitable conditions are signaled
+I've talked about things 'being an error' above: in fact in most (I hope all) cases suitable conditions are signalled.
+
+When `*read-suppress*` is true, then reading a special string will still call its handlers: this is necessary because the handlers can absorb arbitrary characters from the stream.  But the results of the handlers are simply ignored and no string is built.  An alternative would simply be not to call the handlers and assume they are well-behaved, but I decided not to do that.  User-defined handlers should, if need be, notice `*read-suppress*`and behave appropriately, for instance by not building a big list of characters to return when reading is suppressed.
 
 Stringtables are intended to provide a way of reading literal strings with some slightly convenient syntax[^12]: it is *not* a system for, for instance, doing some syntactically-nicer or more extensible version of what `format` does.  There are other things which do that, I'm sure.
 

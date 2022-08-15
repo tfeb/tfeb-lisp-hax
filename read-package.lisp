@@ -74,28 +74,31 @@ If AT is given, it is the dispatch macro character to use instead of #\@."
       (error "Someone is already using #~A" at))
     (set-dispatch-macro-character
      #\# at
-     #'(lambda (stream char infix)
-         (declare (ignore char infix))
-         (let* ((*package* *read-package-package*)
-                (tok (read stream t nil t))
-                (string (typecase tok
-                          (symbol
-                           (if (eq (symbol-package tok) *read-package-package*)
-                               (unintern tok)
-                             (warn
-                              "Dubious syntax for read-package: symbol in package ~A"
-                              (package-name (symbol-package tok))))
-                           (symbol-name tok))
-                          (string
-                           (warn "Dubious syntax for read-package: string read")
-                           tok)
-                          (t
-                           (error "read-package: got a ~A, expecting a symbol"
-                                  (type-of tok)))))
-                (package (find-package string)))
-           (unless package
-             (error "No package with name ~A for read-package" string))
-           (let ((*package* package))
-             (read stream t nil t))))
+     (lambda (stream char infix)
+       (declare (ignore char infix))
+       (if (not *read-suppress*)
+           (let* ((*package* *read-package-package*)
+                  (tok (read stream t nil t))
+                  (string (typecase tok
+                            (symbol
+                             (if (eq (symbol-package tok) *read-package-package*)
+                                 (unintern tok)
+                               (warn
+                                "Dubious syntax for read-package: symbol in package ~A"
+                                (package-name (symbol-package tok))))
+                             (symbol-name tok))
+                            (string
+                             (warn "Dubious syntax for read-package: string read")
+                             tok)
+                            (t
+                             (error "read-package: got a ~A, expecting a symbol"
+                                    (type-of tok)))))
+                  (package (find-package string)))
+             (unless package
+               (error "No package with name ~A for read-package" string))
+             (let ((*package* package))
+               (read stream t nil t)))
+         ;; *READ-SUPPRESS*: just read twice & return NIL
+         (progn (read stream t nil t) (read stream t nil t) nil)))
      rt)
     rt))

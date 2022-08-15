@@ -190,8 +190,10 @@ DELIMITER is the delimiter which terminates the string.  FROM is the
 stream to read, by default *STANDARD-INPUT*, STRINGTABLE is the
 stringtable to use, default *STRINGTABLE*.  Return the string."
   ;; This is meant to be like READ-DELIMITED-FORM.
-  (coerce (read-string-with-stringtable/list delimiter from stringtable)
-          'string))
+  (if (not *read-suppress*)
+      (coerce (read-string-with-stringtable/list delimiter from stringtable)
+              'string)
+    (read-string-with-stringtable/suppressed delimiter from stringtable)))
 
 (defun read-string-with-stringtable/list (delimiter from stringtable)
   (let ((escape (stringtable-escape-character stringtable))
@@ -211,7 +213,7 @@ stringtable to use, default *STRINGTABLE*.  Return the string."
                  :format-arguments (list (first specially) this)
                  :stream from))
         (let ((result (funcall (gethash this (second specially)
-                                        (third specially)) ;
+                                        (third specially))
                                (first specially) this delimiter from)))
           (typecase result
             (character
@@ -237,8 +239,39 @@ stringtable to use, default *STRINGTABLE*.  Return the string."
         (collect this)
         (inch (read-char from t nil t) nil nil)))))))
 
+(defun read-string-with-stringtable/suppressed (delimiter from stringtable)
+  ;; Read a special string when *READ-SUPRESS* is true.  This does Do
+  ;; just enough to get to the end of the string.  This does call
+  ;; handlers because they may be responsible for skipping over stuff,
+  ;; but simply ignores what they return.
+  (let ((escape (stringtable-escape-character stringtable))
+        (specials (stringtable-specials stringtable)))
+    (iterate inch ((this (read-char from t nil t))
+                   (escaping nil)
+                   (specially nil))
+      (cond
+       (escaping
+        (inch (read-char from t nil t) nil nil))
+       (specially
+        (when (char= this delimiter)
+          (error 'stringtable-reader-error
+                 :format-control "hit delimiter parsing special (~A~A)"
+                 :format-arguments (list (first specially) this)
+                 :stream from))
+        (funcall (gethash this (second specially)
+                          (third specially)) ;
+                 (first specially) this delimiter from)
+        (inch (read-char from t nil t) nil nil))
+       ((and escape (char= this escape))
+        (inch (read-char from t nil t) t nil))
+       ((assoc this specials)
+        (inch (read-char from t nil t) nil (assoc this specials)))
+       ((char= this delimiter))
+       (t
+        (inch (read-char from t nil t) nil nil)))))
+  nil)
 
-;;; These two functions are perfecltly easy to implement for users,
+;;; These two functions are perfectly easy to implement for users,
 ;;; but they're the whole purpose of this, so they should exist.
 ;;;
 
