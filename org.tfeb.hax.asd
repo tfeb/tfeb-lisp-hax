@@ -5,7 +5,7 @@
 
 (defsystem "org.tfeb.hax"
   :description "TFEB hax"
-  :version "5.0.2"
+  :version (:read-file-line "VERSION")
   :author "Tim Bradshaw"
   :license "MIT"
   :homepage "https://github.com/tfeb/tfeb-lisp-hax"
@@ -46,7 +46,7 @@
 
 (defsystem "org.tfeb.hax/test"
   :description "TFEB hax tests"
-  :version "5.0.0"
+  :version (:read-file-line "VERSION")
   :author "Tim Bradshaw"
   :license "MIT"
   :homepage "https://github.com/tfeb/tfeb-lisp-hax"
@@ -55,4 +55,5 @@
   :components
   ((:file "test-binding")
    (:file "test-iterate")
-   (:file "test-collecting")))
+   (:file "test-collecting")
+   (:file "test-simple-loops")))
