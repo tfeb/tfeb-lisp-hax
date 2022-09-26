@@ -9,7 +9,8 @@
   :author "Tim Bradshaw"
   :license "MIT"
   :homepage "https://github.com/tfeb/tfeb-lisp-hax"
-  :depends-on (#-LispWorks "closer-mop")
+  :depends-on (#-LispWorks "closer-mop"
+               "org.tfeb.tools.feature-expressions")
   :in-order-to ((test-op (load-op "org.tfeb.hax/test")))
   :components
   ((:file "collecting")
@@ -35,6 +36,12 @@
     :depends-on ("collecting" "iterate" "utilities"))
    (:file "spam"
     :depends-on ("simple-loops"))
+   (:file "metatronic"
+    :depends-on ("utilities"))
+   (:file "slog"
+    ;; this is where the dependency on feature-expressions is
+    :depends-on ("simple-loops" "collecting" "spam"
+                 "metatronic"))
    (:file "hax-cometh"
     :depends-on ("collecting" "wrapping-standard"
                  "iterate" "dynamic-state" "memoize"
@@ -42,7 +49,8 @@
                  "cs-forms" "read-package" "comment-form"
                  "define-functions" "trace-macroexpand"
                  "binding" "stringtable" "object-accessors"
-                 "utilities" "simple-loops" "spam"))))
+                 "utilities" "simple-loops" "spam"
+                 "metatronic" "slog"))))
 
 (defsystem "org.tfeb.hax/test"
   :description "TFEB hax tests"
@@ -56,4 +64,14 @@
   ((:file "test-binding")
    (:file "test-iterate")
    (:file "test-collecting")
-   (:file "test-simple-loops")))
+   (:file "test-simple-loops")
+   (:file "test-metatronic")
+   (:file "test-slog-setup")
+   (:file "test-slog-blackbox"
+    :depends-on ("test-slog-setup"))
+   (:file "test-slog-whitebox"
+    :depends-on ("test-slog-setup"))
+   (:file "test-slog-run"
+    :depends-on ("test-slog-setup"
+                 "test-slog-blackbox"
+                 "test-slog-whitebox"))))

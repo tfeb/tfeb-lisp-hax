@@ -1669,6 +1669,456 @@ It originated as part of a lambda list parser, and betrays that heritage to some
 ### Package, module, dependencies
 `spam` lives in `org.tfeb.hax.spam` and provides `:org.tfeb.hax.spam`.  It requires `simple-loops` and will attempt to load it if `require-module` is present.
 
+## Metatronic macros
+Or, recording angel.  From an idea by Zyni.
+
+The usual approach to making CL macros less unhygienic[^16] means they tend to look like:
+
+```lisp
+(defmacro ... (...)
+  (let ((xn (make-symbol "X"))
+    `(... ,xn ...)))
+```
+
+Metatronic macros make a lot of this pain go away: just give the symbols you want to be gensymized names like `<x>` and everything is better:
+
+```lisp
+(defmacro/m with-file-lines ((line file) &body forms)
+  `(with-open-file (<in> ,file)
+     (do ((,line (read-line <in> nil <in>)
+                (read-line <in> nil <in>)))
+         ((eq ,line <in>))
+       ,@forms)))
+```
+
+All that happens is that each symbol whose name looks like `<...>` is rewritten as a gensymized version of itself, with each identical symbol being rewritten to the same thing[^17].  As a special case, symbols whose names are `"<>"` are rewritten as unique gensymized symbols[^18].
+
+With the above definition
+
+```lisp
+(with-file-lines (l "/tmp/x")
+  (print l))
+```
+
+expands into
+
+```lisp
+(with-open-file (#:<in> "/tmp/x")
+  (do ((l (read-line #:<in> nil #:<in>)
+          (read-line #:<in> nil #:<in>)))
+      ((eq l #:<in>))
+    (print l)))
+```
+
+where, in this case, all the `#:<in>` symbols are the same symbol.
+
+**`defmacro/m`** is like `defmacro` except that metatronic symbols are rewritten.
+
+**`macrolet/m`** is like `macrolet` except that metatronic symbols are rewritten.
+
+**`metatronize`** does the rewriting and could be used to implement similar macros.  It has one positional argument and three keyword arguments:
+
+- `form` is the form to be rewritten;
+- `rewrites`, if given, is a table of rewrites returned from a previous call to `metatronize`;
+- `sharing`, if given, is a table with information on structure sharing from a previous call to `metatronize` which it will use to possibly share structure with the `form` argument to that previous call;
+- `rewriter`, if given, is a function of one argument, a symbol, which should return either its argument and any value or a gensymized version of it and an indication of whether it should be stored in the rewrite table.
+
+If the last argument is given then it is used instead of the builtin metatronizer, so you can define your own notion of what symbols should be gensymized.
+
+`metatronize` returns four values:
+
+- the rewritten form;
+- a table of rewrites which can be handed to a later call to `metatronize`;
+- a list of unique symbols, which are usually the symbols that symbols whose names are `<>`get rewritten to;
+- a sharing table describing shared structure in the form.
+
+### Notes
+Macros written with `defmacro/m` and `macrolet/m` in fact metatronize symbols *twice*: once when the macro is defined, and then again when it is expanded, using lists of rewritten & unique symbols from the first metatronization to drive a `rewriter` function.  This ensures that each expansion has a unique set of gensymized symbols:  with the above definition of `with-file-lines`, then
+
+```lisp
+> (eq (caadr (macroexpand-1 '(with-file-lines (l "/tmp/x") (print l))))
+      (caadr (macroexpand-1 '(with-file-lines (l "/tmp/x") (print l)))))
+nil
+```
+
+If you inspect the expansion of `defmacro/m` forms carefully you can still infer what the names of the gensymized symbols will be before they are metatronized again, and hence subvert metatronization.  Don't do that.
+
+One consequence of this double-metatronization is that you should not use metatronic variables in the arglists of metatronic macros, because the arglists can't be metatronized a second time.  An earlier version did allow this but at the cost of only metatronizing once.
+
+`metatronize` and hence `defmacro/m` only looks at list structure: it does not look into arrays or structures and return suitable copies of them as doing that in general is absurdly hard.  If you want to rewrite the contents of literals then the best approach is to use `load-time-value` and a constructor to do this.
+
+`metatronize` is *not a code walker*: it just blindly replaces some symbols with gensymized versions of them.  Metatronic macros are typically easier to make more hygienic than they would otherwise be but they are very far from being hygienic macros.
+
+The tables used by`metatronize` are currently alists, which will limit its performance on vast structure.  They may not always be, but they probably will be since macro definitions are not usually vast.  Do not rely on them being alists.
+
+`metatronize` does deal with sharing and circularity in list structure properly (but only in list structure).  Objects which are not lists and not metatronic symbols are not copied of course, so if they were previously the same they still will be in the copy.
+
+### Package, module
+`metatronic` lives in and provides `:org.tfeb.hax.metatronic`.
+
+## Simple logging: `slog`
+`slog` is based on an two observations about the Common Lisp condition system:
+
+- conditions do not have to represent errors, or warnings, but can just be a way of a program saying 'look, something interesting happened';
+- handlers can decline to handle a condition, and in particular handlers are invoked *before the stack is unwound*.
+
+Well, saying 'look, something interesting happened' is really quite similar to what logging systems do, and `slog` is built on this idea.
+
+`slog` is the *simple* logging system: it provides a framework on which logging can be built but does not itself provide a vast category of log severities &c.  Such a thing could be built on top of `slog`, which aims to provide mechanism, not policy.
+
+### Almost a simple example
+Given
+
+```lisp
+(defvar *log-stream* nil)
+
+(define-condition my-log-entry (simple-log-entry)
+  ((priority :initform 0
+             :initarg :priority
+             :reader log-entry-priority)))
+
+(defun foo (n)
+  (logging ((my-log-entry
+             (lambda (entry)
+               (when (> (log-entry-priority entry) 1)
+                 (slog-to *log-stream* entry))))
+            (t
+             "/tmp/my.log"))
+    (bar n)))
+
+(defun bar (n)
+  (dotimes (i n)
+    (if (evenp i)
+        (slog "i is ~D" i)
+      (slog 'my-log-entry
+            :format-control "i is ~D"
+            :format-arguments (list i)
+            :priority i))))
+```
+
+then
+
+```lisp
+> (foo 10)
+```
+
+Will cause `/tmp/my.log` to have text like the following appended to it:
+
+```lisp
+3862463894.708 i is 0
+3862463894.709 i is 1
+3862463894.709 i is 2
+3862463894.709 i is 3
+3862463894.709 i is 4
+3862463894.709 i is 5
+3862463894.709 i is 6
+3862463894.709 i is 7
+3862463894.709 i is 8
+3862463894.709 i is 9
+```
+
+The logging format is configurable of course: the numbers are high-precision universal-times, which in the implementation I am using are accurate to 1/1000s.
+
+On the other hand, this:
+
+```lisp
+> (let ((*log-stream* *standard-output*))
+    (foo 10))
+```
+
+Will cause `/tmp/my.log` to be appended to and the following to be printed:
+
+```lisp
+3862464054.581 i is 3
+3862464054.581 i is 5
+3862464054.581 i is 7
+3862464054.581 i is 9
+```
+
+The same results could be obtained by this code:
+
+```lisp
+(defun foo (n)
+  (logging ((my-log-entry
+             (lambda (entry)
+               (when (> (log-entry-priority entry) 1)
+                 (slog-to *log-stream* entry)))
+             "/tmp/my.log"))
+    (bar n)))
+
+(defun bar (n)
+  (dotimes (i n)
+    (slog 'my-log-entry
+          :format-control "i is ~D"
+          :format-arguments (list i)
+          :priority (if (oddp i) i 0))))
+```
+
+In this case `logging` will log to two destinations for `my-log-entry`.
+
+### Log entries
+**`log-entry`** is a condition type which should be an ancestor of all log entry conditions.  It has a single reader function: `log-entry-internal-time`, which will retrieve the internal real time when the log entry was created.  Log formatters use this.
+
+**`simple-log-entry`** is a subtype of both `log-entry` and `simple-condition`: it's the default log entry type when the `datum` argument to the two logging functions is a string.
+
+**`once-only-log-entry`** is a condition type which will be logged to at most one destination.
+
+### Logging functions
+**`(slog datum [arguments ...])`** takes arguments which denote a condition of default type `simple-log-entry` and signals that condition.  The sense in which the 'arguments denote a condition' is exactly the same as for `signal` &c, except that the default condition type is `simple-log-entry`.
+
+**`(slog-to destination datum [arguments ...])`** creates a log entry as `slog` does, but then rather than signalling it logs it directly to `destination`.  `slog-to` is what ends up being called when logging destinations are specified by the `logging` macro, but you can also call it yourself.
+
+### Log destinations and `slog-to`
+The `logging` macro and the `slog-to` generic function know about *log destinations*.  Some types of these are predefined, but you can extend the notion of what a log destination is either by defining methods on `slog-to` (see below for caveats) or, perhaps better, by providing a *fallback destination handler* which `slog-to` will call for destination handlers it does not have specialised methods for.  This fallback handler can be bound dynamically.
+
+The destinations that `slog` knows about already are:
+
+- streams -- the report is written to the stream;
+- strings or pathnames designate filenames which are opened if needed and then the report written to the resulting stream (see below on file handling);
+- function designators -- the function is called to handle the entry;
+- the symbol `nil` causes the entry to be discarded;
+- any other destination type invokes the fallback handler (see below).
+
+Generally `slog-to` tries to return the condition object, however in the case where the destination is a function it returns whatever the function returns, and in the case where it calls the fallback handler its value is whatever that returns.  It's probably not completely safe to rely on its return value.
+
+You can define methods on `slog-to` to handle other destination classes, or indeed log entry classes.  Caveats:
+
+- `slog-to` has an argument precedence order of `(datum destination)`, which is the inverse of the default;
+- methods on `slog-to` should not be defined only for classes you define, and not for any standard CL classes or any classes defined by `slog` itself.
+
+**`*fallback-log-destination-handler*`** is the fallback log destination handler.  If bound to a function, then `slog-to` will, by default, call this function with three arguments: the destination, the log entry, and a list of other arguments passed to `slog-to`.  The function is assumed to handle the entry and its return value or values are returned by `slog-to`.  The default value of this variable is `nil` which will cause `slog-to`to signal an error.
+
+### Log entry formats
+In the case of destinations which end up as streams, the format of what is written into the stream is controlled by `*log-entry-formatter*`.
+
+**`*log-entry-formatter*`** is bound to a function of two arguments: a destination stream and the log entry.  It is responsible for writing the log entry to the stream.  The default value of this writes lines which consist of a high-precision version of the universal time (see below), a space, and then the printed version of the log entry, as defined by its report function.  This variable can be redefined or bound to be any other function.
+
+**`default-log-entry-formatter`** is a function which returns the default value of `*log-entry-formatter*`.
+
+If you want to have fine-grained control over log entry formats then two possible approaches are:
+
+- you could make the value of `*log-entry-formatter*` be a generic function which can then dispatch on its second argument to return an appropriate log format;
+- and/or you could define methods on `slog-to` for suitable `log-entry` subclasses which can select entry formats appropriately.
+
+The second approach allows you, for instance, to select locale-specific formats by passing keyword arguments to specify non-default locales to `slog-to`, rather than just relying on its class alone[^19].
+
+### The `logging` macro
+**`(logging ([(typespec destination ...) ...]) form ...)`** establishes dynamic handlers for log entries which will log to the values of the specified destinations.  Each `typespec` is as for `handler-bind`, except that the type `t` is rewritten as `log-entry`, which makes things easier to write.  Any type mentioned in `typespec` must be a subtype of `log-entry`.  The value of each destination is then found, pathnames being canonicalized (see below for pathname handling) and these values are used as the destinations for calls to `slog-to`.  As an example the expansion of the following form:
+
+```lisp
+(logging ((t "foo"
+             *log-stream*))
+  ...)
+```
+
+is similar to this:
+
+```lisp
+(closing-opened-log-files ()
+  (handler-bind ((log-entry
+                  (let ((d1 (canonicalize-destination "foo"))
+                        (d2 (canonicalize-destination *log-stream*)))
+                    (lambda (e)
+                      (slog-to d1 e)
+                      (slog-to d2 e)))))
+  ...))
+```
+
+where `d1`, `d2` and `e` are gensyms, and the (internal) `canonicalize-destination` function will return an absolute pathname for arguments which are strings or pathnames and leave others untouched.  See below for `closing-opened-log-files`.
+
+The result of this is that `logging` behaves as if the destinations were lexically scoped.  So for instance this will not 'work':
+
+```lisp
+(defvar *my-destination* nil)
+
+(let ((*my-destination* "my.log"))
+  (logging ((t *my-destination*))
+    (foo)))
+
+(defun foo ()
+  (setf *my-destination* nil)
+  (slog "foo"))
+```
+
+The log output will still go to `my.log`.  If you want this sort of behaviour it's easy to get: just use a function as a destination:
+
+```lisp
+(let ((*my-destination* "my.log"))
+  (logging ((t (lambda (e)
+                 (slog-to *my-destination* e))))
+    (foo)))
+```
+
+And now modifications or bindings of `*my-destination*` will take effect.
+
+One important reason for this behaviour of `logging` is to deal with this problem:
+
+```lisp
+(logging ((t "foo.log"))
+  (foo))
+
+(defun foo ()
+  (slog "foo")
+  ... change working directory ...
+  (slog "bar"))
+```
+
+Because the absolute pathname of `foo.log`is computed and stored at the point of the logging macro you won't end up logging to multiple files: all the log entries will go to whatever the canonical version of `foo.log` was at the point that `logging` appeared.
+
+Finally note that calls to `slog` are completely legal but will do nothing outside the dynamic extent of a `logging` macro[^20], but `slog-to` will work quite happily and will write log entries.  This includes when given pathname arguments: it is perfectly legal to write code which just calls `(slog-to "/my/file.log" "a message")`.  See below on file handling.
+
+### File handling
+For log destinations which correspond to files, `slog` goes to some lengths to try and avoid open streams leaking away and to make sure there is a single stream open to each log file.  This is not as simple as it looks as `slog-to` can take a destination argument which is a filename, so that users don't have to write a mass of code which handles streams, and there's no constraint that `slog-to` must be called within the dynamic extent of a `logging` form.
+
+Behind the scenes there is a map between absolute pathnames and the corresponding streams.  Both `logging` and `slog-to` convert any destinations which look like pathnames to absolute pathnames if they are not already and store them in this map.  There are then functions and a macro which handle this map for you.
+
+**`closing-opened-log-files`** is a macro which establishes a saved state of the map of files to streams.  On exit it will close any log file streams added to the map within its dynamic extent (using `unwind-protect` in the obvious way) and restore the saved state (this is all done using special variables in the obvious way so is thread-safe).  So for instance
+
+```lisp
+(closing-opened-log-files ()
+  (slog-to "foo.log" "here"))
+```
+
+will close the open stream to `foo.log` if `slog-to` opened it.  The full syntax is
+
+```lisp
+(closing-opened-log-files (&key reporter abort)
+  ...)
+```
+
+Where `abort`is simply passed to the `close` calls.  `reporter`, if given, should be a function which will be called with the name of each file close.
+
+`logging` expands into something which uses `closing-opened-log-files`.
+
+**`current-log-files`** is a function which will return two values: a list of the current open log files and a list of the current log files which have been closed.   It has a single keyword argument:
+
+-`all`, if given as true will  cause it to return the elements of the whole list, while otherwise it will return lists just back to the closest surrounding `closing-opened-log-files`.
+
+**`close-open-log-files`** will close currently open log files, returning two lists: the list of files that were open and the list of files which were already closed.  It takes three keyword arguments:
+
+- `abort`is passed as the `abort` keyword to `close`;
+- `all` is as for `current-log-files`;
+- `reset`, if true, will reset the map to the save point of the nearest `closing-open-log-files` (or completely if there is no nearest).
+
+**`flush-open-log-file-streams`** will flush open log file streams to their files.   It returns a list of the filenames streams were flushed to.  It has two keyword arguments:
+
+- `all` is as for `current-log-files`;
+- `wait`, if true, will cause it to call `finish-output` rather than `force-output`.
+
+Note that it is perfectly OK to close a log file stream whenever you like: the system will simply reopen the file if it needs to.  This is fine for instance:
+
+```lisp
+(logging ((t "/tmp/file.log"))
+  (slog "foo")
+  (close-open-log-files)
+  (slog "bar"))
+```
+
+What will happen is that the handler will open the file when handling the first condition raised by `slog`, the file will be close, and then the handler will reopen it.  You can see this at work: given
+
+```lisp
+(defun print-log-files (prefix)
+  (multiple-value-bind (opened closed) (current-log-files)
+    (format t "~&~Aopen   ~{~A~^ ~}~%" prefix opened)
+    (format t "~&~Aclosed ~{~A~^ ~}~%" prefix closed)))
+```
+
+then
+
+```lisp
+> (logging ((t "/tmp/file.log"))
+    (print-log-files "before ")
+    (slog "foo")
+    (print-log-files "after slog ")
+    (close-open-log-files)
+    (print-log-files "after close ")
+    (slog "bar")
+    (print-log-files "after close "))
+before open
+before closed
+after slog open   /tmp/file.log
+after slog closed
+after close open
+after close closed /tmp/file.log
+after close open   /tmp/file.log
+after close closed
+nil
+```
+
+If you call `slog-to` with a filename destination*outside* the dynamic extent of `logging` or `closing-opened-log-files` then you perhaps want to call `(close-open-log-files :reset t)` every once in a while as well (the `reset` argument doesn't really matter, but it cleans up the  map).
+
+Finally note that this mechanism is only about filename destinations: if you log to stream destinations you need to manage the streams as you normally would.  The purpose of it is so you can simply not have to worry about the streams but just specify what log file(s) you want written.
+
+### Precision time
+`slog` makes an attempt to write log entries with a 'precision' version of CL's universal time.  It does this by calibrating internal real time against universal time when loaded (this means that loading `slog` takes at least a second and can take up to two seconds or more) and then using this calibration to record times with the precision of internal time.  There is one function which is exposed for this.
+
+**`get-precision-universal-time`** returns three values:
+
+- the best idea of the precise universal time it can work out, by default as a rational number;
+- the rate of the precision time 'clock' in ticks per second (see below);
+ - the number of decimal places to which this quantity should be formatted if printed in units of seconds.
+
+The last value is just `(ceiling (log rate 10))` where `rate` is the second value, but it saves working it out (and if you don't supply the rate this is all computed at compile time).
+
+It has three keyword arguments:
+
+- `it` is the internal real time for to return the precision time for, which by default is `(get-internal-real-time)`;
+- `type` tells you what type to return, and can be one of
+	- `rational` or `ratio` return a rational,
+	- `float` or `double-float` return a double float,
+	- `single-float` returns a single float,
+	- `short-float` returns a short float;
+- `rate` specifies the rate at which the prevision time clock ticks, with the default currently being the minimum of `internal-time-units-per-second` and `1000`;
+- `chide`, if given will chide you about silly choices for the other arguments, in particular if you request a `rate` more than `internal-time-units-per-second`, or a silly float format.
+
+*Do not use the `single-float` or `short-float` types*: single floats don't have enough precision to be useful!
+
+The default rate is the *minimum* of `internal-time-units-per-second` and `1000`: so precision time is supposed to be accurate to a millisecond at most.  It seems  obvious that the rate should instead be `internal-time-units-per-second` which may be much higher for, say, SBCL, but the effective tick rate for SBCL on at least some platforms is much much lower than `internal-time-units-per-second`, so making the default `rate` be that results in printing times with at least three junk digits at the end.
+
+For example:
+
+```lisp
+> (get-precision-universal-time)
+3862739452211/1000
+1000
+3
+
+> (get-precision-universal-time :type 'double-float)
+3.862739466635D9
+1000
+3
+
+> (get-precision-universal-time :type 'single-float :chide t)
+Warning: single-float is almost certainly not precise enough to be useful
+3.8629166E9
+1000
+3
+```
+
+There are some sanity tests for this code which are run on loading `slog`, because I'm not entirely convinced I have got it right.  If you get warnings on load this means it is almost certainly wrong.
+
+You can use `get-precision-universal-time` to write your own formatters, using `log-entry-internal-time` to get the time the entry was created.
+
+### Notes
+`slog` needs to know the current working directory in order to make pathnames absolute.  By default it uses ASDF's function for this, but if you don't use ASDF it has its own which will work for a small number of implementations and has a terrible (and wrong) fallback.  It will warn at compile/load time if it needs to use the terrible fallback: if it does this tell me how to know this in your implementation and I'll add a case for it.
+
+Condition objects are meant to be immutable (from the [CLHS](http://www.lispworks.com/documentation/HyperSpec/Body/m_defi_5.htm "define-condition"):
+
+> The consequences are unspecified if an attempt is made to assign the slots by using `setf`.
+
+So `once-only-log-entry` gets around this by storing a mutable cons in one of its slots which records if it's been logged.
+
+I'm not completely convinced by the precision time code.
+
+`slog` is `slog` not `log` because `log` is `log`.  `slog-to` is named in sympathy.
+
+Logging to pathnames rather than explicitly-managed streams may be a little slower, but seems now to be pretty close.
+
+`slog` will *certainly* turn into something which isn't a toy fairly soon: consider this an ephemeral version.
+
+### Package, module
+`slog` lives in and provides `:org.tfeb.hax.slog`.
+
 ---
 
 The TFEB.ORG Lisp hax are copyright 1989-2022 Tim Bradshaw.  See `LICENSE` for the license.
@@ -1704,3 +2154,13 @@ The TFEB.ORG Lisp hax are copyright 1989-2022 Tim Bradshaw.  See `LICENSE` for t
 [^14]:	This link is to my own copy.
 
 [^15]:	Of course these macros are still not hygenic.
+
+[^16]:	I am reasonably sure that fully hygienic macros are not possible in CL without extensions to the language or access to the guts of the implementation.
+
+[^17]:	So, in particular `foo:<x>` and `bar:<x>` will be rewritten as distinct gensymized versions of themselves.
+
+[^18]:	So `(apply #'eq (metatronize '(<x> <x>)))` is true but `(apply #'eq (metatronize '(<> <>)))` is false.
+
+[^19]:	An interim version of `slog` had a generic function, `log-entry-formatter` which was involved in this process with the aim of being able to select formats more flexibly, but it did not in fact add any useful flexibility.
+
+[^20]:	Well: you could write your own `handler-bind` / `handler-case` forms, but don't do that.
