@@ -10,15 +10,32 @@
   (:export
    #:defmacro/m
    #:macrolet/m
-   #:metatronize))
+   #:metatronize
+   #:default-metatronize-symbol-rewriter))
 
 (in-package :org.tfeb.hax.metatronic)
 
 (provide :org.tfeb.hax.metatronic)
 
+(defparameter *default-metatronize-symbol-rewriter* ;reload for sanity
+  (lambda (s)
+    (let* ((n (symbol-name s))
+           (l (length n)))
+      (if (and (>= l 2)
+               (char= (char n 0) #\<)
+               (char= (char n (1- l)) #\>))
+          (values (make-symbol n)
+                  (/= l 2))
+        (values s nil))))
+  "The default symbol rewriter used by METATRONIZE
+
+The initial value of this implements the bahviour described in the
+documentation: changing it will change the behaviour or DEFMACRO/M and
+MACROLET/M")
+
 (defun metatronize (form &key
                          (rewrites '()) (shares '())
-                         (rewriter nil))
+                         (rewriter *default-metatronize-symbol-rewriter*))
   ;; This has hard-wired knowledge of what a metatronic variable looks
   ;; like unless REWRITER is given
   "Return a metatronic version of FORM, the table of variables, a list
@@ -30,7 +47,8 @@ Arguments are FORM with keyword arguments
 - REWRITER, if given, should be a designator for a function of one
   argument, a symbol, which should either return the symbol or a
   metatronized symbol and an indication of whether it should be stored
-  in the rewrite table.
+  in the rewrite table.  The default value of REWRITER is
+  *DEFAULT-METATRONIZE-SYMBOL-REWRITER*.
 
 This only looks at list structure.  Sharing and circularity of list
 structure (only) is correctly copied."
@@ -43,27 +61,15 @@ structure (only) is correctly copied."
                   (let ((r (assoc this rtab)))
                     (if r
                         (cdr r)
-                      (if rewriter
-                          (multiple-value-bind (new storep)
-                              (funcall rewriter this)
-                            (if (eq new this)
-                                this
-                              (progn
-                                (if storep
-                                    (setf rtab (acons this new rtab))
-                                  (push new anons))
-                                new)))
-                        (let* ((n (symbol-name this))
-                               (l (length n)))
-                          (if (and (>= l 2)
-                                   (char= (char n 0) #\<)
-                                   (char= (char n (1- l)) #\>))
-                              (let ((s (make-symbol n)))
-                                (if (/= l 2)
-                                    (setf rtab (acons this s rtab))
-                                  (push s anons))
-                                s)
-                            this))))))
+                      (multiple-value-bind (new storep)
+                          (funcall rewriter this)
+                        (if (eq new this)
+                            this
+                          (progn
+                            (if storep
+                                (setf rtab (acons this new rtab))
+                              (push new anons))
+                            new))))))
                  (cons
                   (let ((seen (assoc this stab)))
                     (if seen

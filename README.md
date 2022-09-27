@@ -1691,7 +1691,7 @@ Metatronic macros make a lot of this pain go away: just give the symbols you wan
        ,@forms)))
 ```
 
-All that happens is that each symbol whose name looks like `<...>` is rewritten as a gensymized version of itself, with each identical symbol being rewritten to the same thing[^17].  As a special case, symbols whose names are `"<>"` are rewritten as unique gensymized symbols[^18].
+All that happens is that each symbol whose name looks like `<...>` is rewritten as a gensymized version of itself, with each identical symbol being rewritten to the same thing[^17].  As a special case, symbols whose names are `"<>"` are rewritten as unique gensymized symbols[^18].  The pattern symbols must match is controlled by a 'rewriter' function which can be changed if you don't like the default: see below.
 
 With the above definition
 
@@ -1721,9 +1721,7 @@ where, in this case, all the `#:<in>` symbols are the same symbol.
 - `form` is the form to be rewritten;
 - `rewrites`, if given, is a table of rewrites returned from a previous call to `metatronize`;
 - `sharing`, if given, is a table with information on structure sharing from a previous call to `metatronize` which it will use to possibly share structure with the `form` argument to that previous call;
-- `rewriter`, if given, is a function of one argument, a symbol, which should return either its argument and any value or a gensymized version of it and an indication of whether it should be stored in the rewrite table.
-
-If the last argument is given then it is used instead of the builtin metatronizer, so you can define your own notion of what symbols should be gensymized.
+- `rewriter`, if given, is a function of one argument, a symbol, which should return either its argument and any value or a gensymized version of it and an indication of whether it should be stored in the rewrite table.  The default value is `*default-metatronize-rewriter*`.
 
 `metatronize` returns four values:
 
@@ -1731,6 +1729,8 @@ If the last argument is given then it is used instead of the builtin metatronize
 - a table of rewrites which can be handed to a later call to `metatronize`;
 - a list of unique symbols, which are usually the symbols that symbols whose names are `<>`get rewritten to;
 - a sharing table describing shared structure in the form.
+
+**`*default-metatronize-symbol-rewriter*`** is bound to the default symbol rewriter used by `metatronize`.  Changing it will change the behaviour of `metatronize` and therefore of `defmacro/m` and `macrolet/m`.  Reloading `metatronic` will reset it if you break things.
 
 ### Notes
 Macros written with `defmacro/m` and `macrolet/m` in fact metatronize symbols *twice*: once when the macro is defined, and then again when it is expanded, using lists of rewritten & unique symbols from the first metatronization to drive a `rewriter` function.  This ensures that each expansion has a unique set of gensymized symbols:  with the above definition of `with-file-lines`, then
@@ -2113,8 +2113,6 @@ I'm not completely convinced by the precision time code.
 `slog` is `slog` not `log` because `log` is `log`.  `slog-to` is named in sympathy.
 
 Logging to pathnames rather than explicitly-managed streams may be a little slower, but seems now to be pretty close.
-
-`slog` will *certainly* turn into something which isn't a toy fairly soon: consider this an ephemeral version.
 
 ### Package, module
 `slog` lives in and provides `:org.tfeb.hax.slog`.
