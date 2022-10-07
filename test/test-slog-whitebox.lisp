@@ -1,38 +1,55 @@
 ;;;; White box testing of slog
 ;;;
+;;; This is currently rudementary: many more tests are needed around
+;;; the management of log-file objects.
+;;;
 
 (in-package :org.tfeb.hax.slog/test/whitebox)
 
 (define-test "org.tfeb.hax.slog/whitebox"
   :parent (:org.tfeb.hax.slog/test "org.tfeb.hax.slog"))
 
-(defun load-relative-pathname (p)
-  (if *load-truename*
-      (merge-pathnames (pathname p)
-                       *load-truename*)
-    p))
-
 (define-test ("org.tfeb.hax.slog/whitebox" "sanity")
-  (true (null *log-file-streams*))
+  (close-open-log-files :all t :reset t)
+  (true (null *log-files*))
   (let ((lf (load-relative-pathname "log/foo.log")))
-    (when (probe-file lf) (delete-file lf))
+    (ensure-deleted lf)
     (false (probe-file lf))
     (logging ((t lf))
       (slog "test"))
     (true (probe-file lf))
-    (true (null *log-file-streams*))
-    (when (probe-file lf) (delete-file lf))))
+    (true (null *log-files*))
+    (ensure-deleted lf)))
+
+(define-test ("org.tfeb.hax.slog/whitebox" "log-files")
+  ;; Rudimentary log-file tests
+  :depends-on ("sanity")
+  (let* ((f (load-relative-pathname "log/foo.log"))
+         (lf1 (ensure-log-file f))
+         (lf2 (ensure-log-file (namestring f)))
+         (lf3 (ensure-log-file lf2)))
+    (is = 1 (length *log-files*))
+    (is eq lf1 lf2)
+    (is eq lf1 lf3)
+    (true (log-file-open-p lf1))
+    (close-log-file lf1)
+    (false (log-file-open-p lf1))
+    (close-open-log-files :all t :reset t)
+    (true (null *log-files*))
+    (ensure-deleted f)))
 
 (define-test ("org.tfeb.hax.slog/whitebox" "reopen")
+  ;; Test reopening (not sure why this is here)
+  :depends-on ("sanity")
   (let ((lf (load-relative-pathname "log/foo.log")))
     (logging ((t lf))
       (slog "test 1")
-      (is = 1 (length *log-file-streams*))
+      (is = 1 (length *log-files*))
       (close-open-log-files :reset t)
-      (is = 0 (length *log-file-streams*))
+      (is = 0 (length *log-files*))
       (slog "test 2")
-      (is = 1 (length *log-file-streams*)))
-    (is = 0 (length *log-file-streams*))
+      (is = 1 (length *log-files*)))
+    (is = 0 (length *log-files*))
     (finish (delete-file lf))))
 
 (defun it-offset ()
@@ -42,7 +59,6 @@
 
 (define-test ("org.tfeb.hax.slog/whitebox" "precision-time")
   ;; A version of this is also in the source as basic sanity
-  ;;
   (logging ((t *error-output*))
     (let ((goods 0)
           (stepped 0)

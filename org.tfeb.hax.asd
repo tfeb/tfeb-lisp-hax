@@ -9,8 +9,7 @@
   :author "Tim Bradshaw"
   :license "MIT"
   :homepage "https://github.com/tfeb/tfeb-lisp-hax"
-  :depends-on (#-LispWorks "closer-mop"
-               "org.tfeb.tools.feature-expressions")
+  :depends-on (#-LispWorks "closer-mop")
   :in-order-to ((test-op (load-op "org.tfeb.hax/test")))
   :components
   ((:file "collecting")
@@ -39,7 +38,6 @@
    (:file "metatronic"
     :depends-on ("utilities"))
    (:file "slog"
-    ;; this is where the dependency on feature-expressions is
     :depends-on ("simple-loops" "collecting" "spam"
                  "metatronic"))
    (:file "hax-cometh"

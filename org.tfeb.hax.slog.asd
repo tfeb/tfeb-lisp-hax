@@ -18,7 +18,6 @@
   ("org.tfeb.hax.simple-loops"
    "org.tfeb.hax.collecting"
    "org.tfeb.hax.spam"
-   "org.tfeb.hax.metatronic"
-   "org.tfeb.tools.feature-expressions")
+   "org.tfeb.hax.metatronic")
   :components
   ((:file "slog")))

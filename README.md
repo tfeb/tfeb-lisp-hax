@@ -1666,6 +1666,8 @@ It originated as part of a lambda list parser, and betrays that heritage to some
 
 *Any* predicate works: the predicates and predicate combinators it comes with are just the ones I wrote.  Many of the ones that don't exist don't exist because there already *are* predicates which match, for instance, keywords, or the empty list and so on.
 
+There arguably should be spread versions of many of these combinators, so if you have a list of predicates you could say, for instance `(all-of* preds)` rather than `(apply #'all-of preds)`.  There might be in future.
+
 ### Package, module, dependencies
 `spam` lives in `org.tfeb.hax.spam` and provides `:org.tfeb.hax.spam`.  It requires `simple-loops` and will attempt to load it if `require-module` is present.
 
@@ -1874,7 +1876,7 @@ The `logging` macro and the `slog-to` generic function know about *log destinati
 The destinations that `slog` knows about already are:
 
 - streams -- the report is written to the stream;
-- strings or pathnames designate filenames which are opened if needed and then the report written to the resulting stream (see below on file handling);
+- strings or pathnames designate filenames which are opened if needed, with any needed directories being created, and then the report written to the resulting stream (see below on file handling);
 - function designators -- the function is called to handle the entry;
 - the symbol `nil` causes the entry to be discarded;
 - any other destination type invokes the fallback handler (see below).
@@ -1884,7 +1886,7 @@ Generally `slog-to` tries to return the condition object, however in the case wh
 You can define methods on `slog-to` to handle other destination classes, or indeed log entry classes.  Caveats:
 
 - `slog-to` has an argument precedence order of `(datum destination)`, which is the inverse of the default;
-- methods on `slog-to` should not be defined only for classes you define, and not for any standard CL classes or any classes defined by `slog` itself.
+- methods on `slog-to` should be defined only for classes you define, and not for any standard CL classes or any classes defined by `slog` itself.
 
 **`*fallback-log-destination-handler*`** is the fallback log destination handler.  If bound to a function, then `slog-to` will, by default, call this function with three arguments: the destination, the log entry, and a list of other arguments passed to `slog-to`.  The function is assumed to handle the entry and its return value or values are returned by `slog-to`.  The default value of this variable is `nil` which will cause `slog-to`to signal an error.
 
@@ -1903,7 +1905,7 @@ If you want to have fine-grained control over log entry formats then two possibl
 The second approach allows you, for instance, to select locale-specific formats by passing keyword arguments to specify non-default locales to `slog-to`, rather than just relying on its class alone[^19].
 
 ### The `logging` macro
-**`(logging ([(typespec destination ...) ...]) form ...)`** establishes dynamic handlers for log entries which will log to the values of the specified destinations.  Each `typespec` is as for `handler-bind`, except that the type `t` is rewritten as `log-entry`, which makes things easier to write.  Any type mentioned in `typespec` must be a subtype of `log-entry`.  The value of each destination is then found, pathnames being canonicalized (see below for pathname handling) and these values are used as the destinations for calls to `slog-to`.  As an example the expansion of the following form:
+**`(logging ([(typespec destination ...) ...]) form ...)`** establishes dynamic handlers for log entries which will log to the values of the specified destinations.  Each `typespec` is as for `handler-bind`, except that the type `t` is rewritten as `log-entry`, which makes things easier to write.  Any type mentioned in `typespec` must be a subtype of `log-entry`.  The value of each destination is then found, with special handling for pathnames (see below) and these values are used as the destinations for calls to `slog-to`.  As an example the expansion of the following form:
 
 ```lisp
 (logging ((t "foo"
@@ -1924,7 +1926,7 @@ is similar to this:
   ...))
 ```
 
-where `d1`, `d2` and `e` are gensyms, and the (internal) `canonicalize-destination` function will return an absolute pathname for arguments which are strings or pathnames and leave others untouched.  See below for `closing-opened-log-files`.
+where `d1`, `d2` and `e` are gensyms, and the (internal) `canonicalize-destination` deals with destinations which represent files.  See below for `closing-opened-log-files`.
 
 The result of this is that `logging` behaves as if the destinations were lexically scoped.  So for instance this will not 'work':
 
@@ -1959,7 +1961,7 @@ One important reason for this behaviour of `logging` is to deal with this proble
 
 (defun foo ()
   (slog "foo")
-  ... change working directory ...
+  ... change what file "foo.log" would refer to ...
   (slog "bar"))
 ```
 
@@ -1967,12 +1969,14 @@ Because the absolute pathname of `foo.log`is computed and stored at the point of
 
 Finally note that calls to `slog` are completely legal but will do nothing outside the dynamic extent of a `logging` macro[^20], but `slog-to` will work quite happily and will write log entries.  This includes when given pathname arguments: it is perfectly legal to write code which just calls `(slog-to "/my/file.log" "a message")`.  See below on file handling.
 
+Note that destinations which correspond to files (pathnames and strings) are opened by `logging`, with any needed directories being created and so on.  This means that if those files *can't* be opened then you'll get an error immediately, rather than on the first call to `slog`.
+
 ### File handling
 For log destinations which correspond to files, `slog` goes to some lengths to try and avoid open streams leaking away and to make sure there is a single stream open to each log file.  This is not as simple as it looks as `slog-to` can take a destination argument which is a filename, so that users don't have to write a mass of code which handles streams, and there's no constraint that `slog-to` must be called within the dynamic extent of a `logging` form.
 
-Behind the scenes there is a map between absolute pathnames and the corresponding streams.  Both `logging` and `slog-to` convert any destinations which look like pathnames to absolute pathnames if they are not already and store them in this map.  There are then functions and a macro which handle this map for you.
+Behind the scenes there is a stack of log file objects which know both their true pathnames (from `truename`), as well as the corresponding stream if they're open, thus providing a map between truenames and streams.  When given destinations which are file designators both `logging` and `slog-to` will first probe files to see if they exist, and use the corresponding  true name (or the pathname if the file is not found) to find or create suitable entries in this map.  There are then a number of utilities to deal with this map.
 
-**`closing-opened-log-files`** is a macro which establishes a saved state of the map of files to streams.  On exit it will close any log file streams added to the map within its dynamic extent (using `unwind-protect` in the obvious way) and restore the saved state (this is all done using special variables in the obvious way so is thread-safe).  So for instance
+**`closing-opened-log-files`** is a macro which establishes a saved state of the map between true names and streams.  On exit it will close any log file streams added to the map within its dynamic extent (using `unwind-protect` in the obvious way) and restore the saved state (this is all done using special variables in the obvious way so is thread-safe).  So for instance
 
 ```lisp
 (closing-opened-log-files ()
@@ -1986,24 +1990,28 @@ will close the open stream to `foo.log` if `slog-to` opened it.  The full syntax
   ...)
 ```
 
-Where `abort`is simply passed to the `close` calls.  `reporter`, if given, should be a function which will be called with the name of each file close.
+Where `abort`is simply passed to the `close` calls.  `reporter`, if given, should be a function which will be called with the name of each file closed.
 
 `logging` expands into something which uses `closing-opened-log-files`.
 
-**`current-log-files`** is a function which will return two values: a list of the current open log files and a list of the current log files which have been closed.   It has a single keyword argument:
+**`current-log-files`** is a function which will return two values: lists of the true names of currently open log files, and of currently closed log files.   It has a single keyword argument:
 
 -`all`, if given as true will  cause it to return the elements of the whole list, while otherwise it will return lists just back to the closest surrounding `closing-opened-log-files`.
 
-**`close-open-log-files`** will close currently open log files, returning two lists: the list of files that were open and the list of files which were already closed.  It takes three keyword arguments:
+**`close-open-log-files`** will close currently open log files, returning two lists: the list of files that were open and the list of files which were already closed.  It takes four keyword arguments:
 
 - `abort`is passed as the `abort` keyword to `close`;
 - `all` is as for `current-log-files`;
-- `reset`, if true, will reset the map to the save point of the nearest `closing-open-log-files` (or completely if there is no nearest).
+- `reset`, if given, will reset the map to the save point of the nearest `closing-open-log-files` (or completely if there is no nearest, or if `all` is given);
+- `test` should be a function of one argument, a pathname, which will cause only those log files for which the function succeeds to be closed.
 
-**`flush-open-log-file-streams`** will flush open log file streams to their files.   It returns a list of the filenames streams were flushed to.  It has two keyword arguments:
+You can't use both `test` and `reset` because it would leak streams.
+
+**`flush-open-log-file-streams`** will flush open log file streams to their files.   It returns a list of the filenames streams were flushed to.  It has three keyword arguments:
 
 - `all` is as for `current-log-files`;
-- `wait`, if true, will cause it to call `finish-output` rather than `force-output`.
+- `wait`, if true, will cause it to call `finish-output` rather than `force-output`;
+- `test` is as for `close-open-log-files`, and only the files which pass the test will be flushed.
 
 Note that it is perfectly OK to close a log file stream whenever you like: the system will simply reopen the file if it needs to.  This is fine for instance:
 
@@ -2014,7 +2022,7 @@ Note that it is perfectly OK to close a log file stream whenever you like: the s
   (slog "bar"))
 ```
 
-What will happen is that the handler will open the file when handling the first condition raised by `slog`, the file will be close, and then the handler will reopen it.  You can see this at work: given
+What will happen is that the handler will open the file when handling the first condition raised by `slog`, the file will be closes, and then the handler will reopen it.  You can see this at work: given
 
 ```lisp
 (defun print-log-files (prefix)
@@ -2047,7 +2055,22 @@ nil
 
 If you call `slog-to` with a filename destination*outside* the dynamic extent of `logging` or `closing-opened-log-files` then you perhaps want to call `(close-open-log-files :reset t)` every once in a while as well (the `reset` argument doesn't really matter, but it cleans up the  map).
 
-Finally note that this mechanism is only about filename destinations: if you log to stream destinations you need to manage the streams as you normally would.  The purpose of it is so you can simply not have to worry about the streams but just specify what log file(s) you want written.
+Finally note that all this mechanism is only about filename destinations: if you log to stream destinations you need to manage the streams as you normally would.  The purpose of it is so you can simply not have to worry about the streams but just specify what log file(s) you want written.
+
+### Checking the log file map is sane
+**`log-files-sane-p`** is a function which will check lists of files for sanity.  It has two arguments: a list of true names of open log files, and a list for closed log files.  These are just the two lists that `current-log-files` returns.  It will return `nil` if there is some problem such as duplicate entries, or files appearing on both lists.  This should not be able to happen, but it's better to be able to know if it does.  In addition it has two keyword arguments:
+
+- `warn` will signal a warning for each wrong thing it finds;
+- `error` will cause it to signal an error rather than returning `nil`.
+
+So, for instance
+
+```lisp
+(multiple-value-bind (opened closed) (current-log-files :all t)
+  (log-files-sane-p opened closed :warn t :error t))
+```
+
+would cause a suitable error (preceded by warnings) if anything was wrong.
 
 ### Precision time
 `slog` makes an attempt to write log entries with a 'precision' version of CL's universal time.  It does this by calibrating internal real time against universal time when loaded (this means that loading `slog` takes at least a second and can take up to two seconds or more) and then using this calibration to record times with the precision of internal time.  There is one function which is exposed for this.
@@ -2100,7 +2123,7 @@ There are some sanity tests for this code which are run on loading `slog`, becau
 You can use `get-precision-universal-time` to write your own formatters, using `log-entry-internal-time` to get the time the entry was created.
 
 ### Notes
-`slog` needs to know the current working directory in order to make pathnames absolute.  By default it uses ASDF's function for this, but if you don't use ASDF it has its own which will work for a small number of implementations and has a terrible (and wrong) fallback.  It will warn at compile/load time if it needs to use the terrible fallback: if it does this tell me how to know this in your implementation and I'll add a case for it.
+A previous version `slog` handled files rather differently: it tried to delay creating or opening them as long as possible, and thus needed to be able to find an absolute pathname for a file which it had not opened or created, requiring it to have a notion of the current directory which was better than `*default-pathname-defaults*`.  This is now all gone: the current version simply treats pathnames as they are.
 
 Condition objects are meant to be immutable (from the [CLHS](http://www.lispworks.com/documentation/HyperSpec/Body/m_defi_5.htm "define-condition"):
 
