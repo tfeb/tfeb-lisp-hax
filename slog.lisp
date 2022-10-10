@@ -26,6 +26,7 @@
    #:simple-log-entry
    #:slog
    #:closing-opened-log-files
+   #:log-file-truename
    #:current-log-files
    #:log-files-sane-p
    #:close-open-log-files
@@ -168,6 +169,12 @@
             (open-log-file-pathname (log-file-pathname lf)))))
   lf)
 
+(defun log-file-truename (filespec)
+  ;; This lets user code get back the truename of a log file, wrapping
+  ;; creating the file, and directories etc, so you don't need to
+  ;; replicate a bunch of the guts of slog.
+  (log-file-pathname (ensure-log-file filespec)))
+
 (defun close-open-log-files-up-to (up-to &key (abort nil) (test nil))
   ;; Close any open log files up to a specified tail.  With test
   ;; return only those whose pathnames pass the test.  Returns the
@@ -224,7 +231,7 @@
   ;; Normally just close the current open log files.  if TEST is given
   ;; close only those whose pathnames pass the test. With reset reset
   ;; the current list (only to the last saved state).  You can't give
-  ;; both test and reset this would leak filehandles.
+  ;; both test and reset as this would leak filehandles.
   (when (and test reset)
     (error "can't give both test and reset"))
   (let ((clft (if all nil *slfs*)))

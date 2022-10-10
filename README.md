@@ -2055,6 +2055,15 @@ nil
 
 If you call `slog-to` with a filename destination*outside* the dynamic extent of `logging` or `closing-opened-log-files` then you perhaps want to call `(close-open-log-files :reset t)` every once in a while as well (the `reset` argument doesn't really matter, but it cleans up the  map).
 
+**`log-file-truename`** is a little utility function: it will return the `truename` of a filename designator, making sure any needed directories are created and creating & opening the file if need be.  It's useful just so user code does not need to duplicate what `slog` does, and particularly if you're calling `slog-to` explicitly in situations like:
+
+```lisp
+(let ((logname (log-file-truename "my-log.log")))
+  ... perhaps change directory etc ...
+  (slog-to logname ...)
+  ...)
+```
+
 Finally note that all this mechanism is only about filename destinations: if you log to stream destinations you need to manage the streams as you normally would.  The purpose of it is so you can simply not have to worry about the streams but just specify what log file(s) you want written.
 
 ### Checking the log file map is sane
@@ -2122,10 +2131,28 @@ There are some sanity tests for this code which are run on loading `slog`, becau
 
 You can use `get-precision-universal-time` to write your own formatters, using `log-entry-internal-time` to get the time the entry was created.
 
-### Notes
-A previous version `slog` handled files rather differently: it tried to delay creating or opening them as long as possible, and thus needed to be able to find an absolute pathname for a file which it had not opened or created, requiring it to have a notion of the current directory which was better than `*default-pathname-defaults*`.  This is now all gone: the current version simply treats pathnames as they are.
+### An example: rotating log files
+```lisp
+(defun rotate-log-files (&key (all nil))
+  ;; Obviously this would want to be more careful in real life
+  (flet ((rotate-one (file)
+           (let ((rotated (make-pathname :type "old"
+                                         :defaults file)))
+               (when (probe-file rotated)
+                 (delete-file rotated))
+               (when (probe-file file)
+                 (rename-file file rotated)))))
+    (multiple-value-bind (newly-closed already-closed) (close-open-log-files :all all)
+      (dolist (a already-closed)
+        (rotate-one a))
+      (dolist (n newly-closed)
+        (rotate-one n)))))
+```
 
-Condition objects are meant to be immutable (from the [CLHS](http://www.lispworks.com/documentation/HyperSpec/Body/m_defi_5.htm "define-condition"):
+### Notes
+A previous version of `slog` handled files rather differently: it tried to delay creating or opening them as long as possible, and thus needed to be able to find an absolute pathname for a file which it had not opened or created, requiring it to have a notion of the current directory which was better than `*default-pathname-defaults*`.  This is now all gone: the current version simply treats pathnames as they are.
+
+Condition objects are meant to be immutable: from the [CLHS](http://www.lispworks.com/documentation/HyperSpec/Body/m_defi_5.htm "define-condition")
 
 > The consequences are unspecified if an attempt is made to assign the slots by using `setf`.
 
