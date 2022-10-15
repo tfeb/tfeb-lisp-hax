@@ -10,6 +10,7 @@
   (:export
    #:defmacro/m
    #:macrolet/m
+   #:define-compiler-macro/m
    #:metatronize
    #:default-metatronize-symbol-rewriter))
 
@@ -139,6 +140,26 @@ this."
 
 #+(and LispWorks LW-Editor)
 (editor:setup-indent "macrolet/m" 1 nil nil 'flet)
+
+(defmacro define-compiler-macro/m (name (&rest args) &body doc/decls/forms)
+  "Define a metatronic compiler macro
+
+This is exactly like DEFINE-COMPILER-MACRO but metatronic symbols are
+gensymized, when they occur directly in list structure.
+
+Note that metatronic symbols are *not* gensymized in arrays,
+structures or what have you as it's just too hard.  Use
+LOAD-TIME-VALUE to construct a literal at load time if you really need
+this."
+  (multiple-value-bind (doc decls forms) (parse-docstring-body doc/decls/forms)
+    (multiple-value-bind (metatronized-forms rtab anons stab) (metatronize forms)
+      (declare (ignore stab))
+      `(define-compiler-macro ,name ,args
+         ,@(if doc (list doc) '())
+         ,@decls
+         (m2 (progn ,@metatronized-forms)
+                             ',(mapcar #'cdr rtab) ',anons)))))
+
 
 #||
 (defmacro/m do-file ((lv file) &body forms)

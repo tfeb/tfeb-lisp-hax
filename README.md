@@ -1716,6 +1716,8 @@ where, in this case, all the `#:<in>` symbols are the same symbol.
 
 **`defmacro/m`** is like `defmacro` except that metatronic symbols are rewritten.
 
+**`define-compiler-macro/m`** is like `define-compiler-macro` except that metatronic symbols are rewritten.
+
 **`macrolet/m`** is like `macrolet` except that metatronic symbols are rewritten.
 
 **`metatronize`** does the rewriting and could be used to implement similar macros.  It has one positional argument and three keyword arguments:
