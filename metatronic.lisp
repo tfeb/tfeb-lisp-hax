@@ -101,6 +101,24 @@ structure (only) is correctly copied."
                                     (t
                                      (values s nil)))))))
 
+(define-condition metatronic-arglist-warning (style-warning simple-warning)
+  ())
+
+(defun check-arglist (name args)
+  (multiple-value-bind (rewritten rewrites anons) (metatronize args)
+    (declare (ignore rewritten))
+    (unless (and (null rewrites) (null anons))
+      ;; Real programmers would do this with FORMAT control flow
+      ;; operations.
+      (warn 'metatronic-arglist-warning
+            :format-control "~S's arglist ~S contains ~A variables"
+            :format-arguments (list name args
+                                    (if (not (null rewrites))
+                                        (if (not (null anons))
+                                            "metatronic and anonymous"
+                                          "metatronic")
+                                      "anonymous"))))))
+
 (defmacro defmacro/m (name (&rest args) &body doc/decls/forms)
   "Define a metatronic macro
 
@@ -111,6 +129,7 @@ Note that metatronic symbols are *not* gensymized in arrays,
 structures or what have you as it's just too hard.  Use
 LOAD-TIME-VALUE to construct a literal at load time if you really need
 this."
+  (check-arglist name args)
   (multiple-value-bind (doc decls forms) (parse-docstring-body doc/decls/forms)
     (multiple-value-bind (metatronized-forms rtab anons stab) (metatronize forms)
       (declare (ignore stab))
@@ -125,6 +144,7 @@ this."
   `(macrolet
        ,(mapcar (lambda (clause)
                   (destructuring-bind (name (&rest args) &body doc/decls/forms) clause
+                    (check-arglist name args)
                     (multiple-value-bind (doc decls forms) (parse-docstring-body doc/decls/forms)
                       (multiple-value-bind (metatronized-forms rtab anons stab)
                           (metatronize forms)
@@ -151,6 +171,7 @@ Note that metatronic symbols are *not* gensymized in arrays,
 structures or what have you as it's just too hard.  Use
 LOAD-TIME-VALUE to construct a literal at load time if you really need
 this."
+  (check-arglist name args)
   (multiple-value-bind (doc decls forms) (parse-docstring-body doc/decls/forms)
     (multiple-value-bind (metatronized-forms rtab anons stab) (metatronize forms)
       (declare (ignore stab))

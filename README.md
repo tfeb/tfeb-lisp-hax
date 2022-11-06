@@ -1747,7 +1747,7 @@ nil
 
 If you inspect the expansion of `defmacro/m` forms carefully you can still infer what the names of the gensymized symbols will be before they are metatronized again, and hence subvert metatronization.  Don't do that.
 
-One consequence of this double-metatronization is that you should not use metatronic variables in the arglists of metatronic macros, because the arglists can't be metatronized a second time.  An earlier version did allow this but at the cost of only metatronizing once.
+One consequence of this double-metatronization is that you should not use metatronic variables in the arglists of metatronic macros, because the arglists can't be metatronized a second time.  An earlier version did allow this but at the cost of only metatronizing once.  The current version checks for this and will signal a `style-warning` (in fact a subclass of it) if it finds any.
 
 `metatronize` and hence `defmacro/m` only looks at list structure: it does not look into arrays or structures and return suitable copies of them as doing that in general is absurdly hard.  If you want to rewrite the contents of literals then the best approach is to use `load-time-value` and a constructor to do this.
 
