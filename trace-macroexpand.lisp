@@ -31,6 +31,7 @@
   (:export
    #:*trace-macroexpand-print-length*
    #:*trace-macroexpand-print-level*
+   #:*trace-macroexpand-print-circle*
    #:*trace-macroexpand-maybe-trace*
    #:*trace-macroexpand-trace-hook*
    #:*trace-macroexpand-traced-packages*
@@ -54,6 +55,9 @@
 
 (defvar *trace-macroexpand-print-level* 2
   "The value of *PRINT-LEVEL* used when tracing macroexpansions")
+
+(defvar *trace-macroexpand-print-circle* *print-circle*
+  "The value of *PRINT-CIRCLE* used when tracing macroexpansions")
 
 (defvar *trace-macroexpand-maybe-trace* t
   "Should we even consider tracing?
@@ -162,8 +166,8 @@ form and the environment.
 
 If this is not NIL then the function is called without any
 locally-bound values for printer-control variables, so
-*TRACE-MACROEXPAND-PRINT-LENGTH* & *TRACE-MACROEXPAND-PRINT-LEVEL* are
-not used.
+*TRACE-MACROEXPAND-PRINT-LENGTH* *TRACE-MACROEXPAND-PRINT-LEVEL* &
+*TRACE-MACROEXPAND-PRINT-CIRCLE* are not used.
 
 The return value is ignored.")
 
@@ -198,6 +202,7 @@ The return value is ignored.")
                      macro-form expanded-form environment)
           (let ((*print-length* *trace-macroexpand-print-length*)
                 (*print-level* *trace-macroexpand-print-level*)
+                (*print-circle* *trace-macroexpand-print-circle*)
                 (*print-pretty* t))
             (format *trace-output* "~&~S~% -> ~S~%"
                     macro-form expanded-form)

@@ -993,7 +993,7 @@ It returns the canonicalised list of package designators being traced: each of t
 
 **`*trace-macroexpand-traced-packages*`** is the canonical list of package designators maintained by the previous two functions.  You can bind or modify this.
 
-**`*trace-macroexpand-print-length*`** and **`*trace-macroexpand-print-level*`** are the values of `*print-length*` and `*print-level*` in effect during tracing.  By default they are `3` and `2` respectively.
+**`*trace-macroexpand-print-length*`**, **`*trace-macroexpand-print-level*` and `*trace-macroexpand-print-cicrle*`** are the values of `*print-length*`, `*print-level*` and `*print-circle*` in effect during tracing.  By default they are `3`, `2` and the ambient value of `*print-circle*` when the system is loaded respectively.
 
 **`*trace-macroexpand-printer*`**, if it is not `nil`, should be a designator for a function of four arguments: the stream to trace on, the macro form, the expanded macro form and the environment: it will be called to print or otherwise record the expansion.  In this case no binding is done of printer control variables: the function is responsible for anything it wants to do.
 
@@ -1459,7 +1459,7 @@ In addition the values returned are both more defaulted and more flexible:
 
 - if no return value is specified then the current values of all the bindings are returned;
 - if a single form is specified then all its values are returned (this is just like `do`);
-- if there are more than a single form, then then all the values from all of them are returned.
+- if there are more than a single form, then all the values from all of them are returned.
 
 To get the same behaviour as, for instance, `(do (...) (<test>) ...)` you therefore need to say `(doing (...) (<test> nil) ...)`: `(doing (...) (<test>) ...)` will return the current values of all the variables.
 
