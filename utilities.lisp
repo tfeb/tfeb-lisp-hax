@@ -1,17 +1,8 @@
-;;;; Small utilities, used mostly by other haxks
+;;;; Small utilities, used mostly by other hax
 ;;;
-
-;;; Try to make this work as a module
-;;;
-#+org.tfeb.tools.require-module
-(org.tfeb.tools.require-module:needs
- :org.tfeb.hax.collecting
- :org.tfeb.hax.iterate)
 
 (defpackage :org.tfeb.hax.utilities
-  (:use :cl
-   :org.tfeb.hax.collecting
-   :org.tfeb.hax.iterate)
+  (:use :cl)
   (:export
    #:parse-docstring-body
    #:parse-simple-body))
@@ -24,14 +15,13 @@
   "Parse a body which can not have a docstring
 
 Return two values: a list of declarations and a list of forms"
-  (with-collectors (decl body)
-    (do* ((forms decls/forms (rest forms))
-          (this (first forms) (first forms)))
-         ((null forms))
-      (if (and (consp this)
-               (eql (first this) 'declare))
-          (decl this)
-        (body this)))))
+  (do* ((slced '())
+        (tail decls/forms (rest tail))
+        (this (first tail) (first tail)))
+       ((or (null tail) (not (and (consp this)
+                                  (eql (first this) 'declare))))
+        (values (nreverse slced) tail))
+    (push this slced)))
 
 (defun parse-docstring-body (doc/decls/forms)
   "Parse a body that may have a docstring at the start

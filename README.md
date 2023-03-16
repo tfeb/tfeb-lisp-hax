@@ -395,7 +395,17 @@ I've always liked Scheme's named-`let` construct.  It's pretty easy to provide a
 
 Well, that's what it used to do: for a while I simply set the flag which controls whether it thinks an implementation supports tail-call elimination unilaterally to true, which means it will always create correct code, even if that code may cause stack overflows on implementations which don't eliminate tail calls[^6].  From 21st August 2021 the old code is now gone altogether (it is still available for inspection in old commits).
 
-For a very long time I was confused about variable binding in `iterate`: I thought it was like `let*`, not like `let` although I'm not sure why.  In the previous version of this code there was even an `iterate*` macro which claimed to be like `let*` and an `iterate` which claimed to be like `let`.  But that was all just confusion, so `iterate*` is gone again.
+From March 2023 there are now four variants on this macro which provide various options of evaluation order and stepping.
+
+**`iterate`** is the original macro: this is just like named-`let` in Scheme.  In particular it binds in parallel.  So
+
+```lisp
+(let ((x 1))
+  (iterate n ((x 2) (y x))
+    (values x y)))
+```
+
+evaluates to `2` and `1`.
 
 ```lisp
 (iterate foo ((x 1)
@@ -405,7 +415,7 @@ For a very long time I was confused about variable binding in `iterate`: I thoug
   ...)
 ```
 
-turns into
+simply turns into
 
 ```lisp
 (labels ((foo (x y)
@@ -415,7 +425,150 @@ turns into
   (foo 1 2))
 ```
 
-Combined with `collecting`, `iterate` provides a surprisingly pleasant minimalist framework for walking over data structures in my experience.
+**`iterate*`** is a variation of `iterate` which binds sequentially for the initial binding:
+
+```lisp
+(let ((x 1))
+  (iterate* n ((x 2) (y x))
+    (values x y)))
+```
+
+will evaluate to `2` and `2` (and the outer binding of `x` is now unused).  Recursive calls are just function calls and evaluate their arguments as you would expect in both cases.
+
+Additionally there are now two  fancier macros: `iterating` and `iterating*`.  Both of these support a variation of `do`-style stepping arguments: a binding like `(v init)` will bind `v` to `init` and then, by default, step it also to `init`.  A binding like `(v init step)` will bind to `init` and then step it to `step`.  Note that this is *not the same* as `do`: for `do` `(v init)` will bind `v` to `init` and then to whatever its current value is.  To achieve this with `iterating` you need to say `(v init v)`.  See below for some rationale.
+
+The local function now also takes keyword arguments with values which default to the stepping expressions.  So:
+
+```lisp
+(iterating n ((n 0 (1+ n)))
+  (if (= n 10)
+      n
+    (n)))
+```
+
+Does what you think.  But you can also provide arguments to the local function:
+
+```lisp
+(iterating n ((o t) (i 0 (1+ i)))
+  (print o)
+  (when (< i 10)
+    (n :o (if (evenp i) t nil))))
+```
+
+will print a succession of `t`s and `nil`s, for instance, `i` gets stepped automatically.
+
+**`iterating`** is like `let` / `do`: all the binding that happens is in parallel.  So in particular, as with `iterate`:
+
+```lisp
+(let ((x 1))
+  (iterating n ((x 2) (y x))
+    (values x y)))
+```
+
+evaluates to `2` and `1`.  Similarly variable references in step forms are to the previous value of the variable:
+
+```lisp
+(iterating n ((i 2 (1+ i)) (j 1 i))
+  (when (< i 10)
+    (format t "~&~D ~D~%" i j)
+    (n)))
+```
+
+will print `2 1` then `3 2` and so on.
+
+**`iterating*`** is like `let*` / `do*`: all the binding that happens is sequential.  So in particular as with `iterate*`:
+
+```lisp
+(let ((x 1))
+  (iterating* n ((x 2) (y x))
+    (values x y)))
+```
+
+evaluates to `2`and `2` and the outer binding is unused.  Also, the step forms now refer to the new values of variables to their left:
+
+```lisp
+(iterating* n ((i 2 (1+ i)) (j i i))
+  (when (< i 10)
+    (format t "~&~D ~D~%" i j)
+    (n)))
+```
+
+prints `2 2`, `3 3` and so on.  This also applies to the optional arguments to the local function:
+
+```lisp
+> (iterating* n ((i 2 (1+ i)) (j i i))
+    (when (< i 10)
+      (format t "~&~D ~D~%" i j)
+      (if (evenp i)
+          (n (+ i 3))
+        (n :i (+ i 1)))))
+2 2
+5 5
+6 6
+9 9
+```
+
+Combined with `collecting`, `iterate` provides a surprisingly pleasant minimalist framework for walking over data structures in my experience, and i have use it extensively.  `iterate*` , `iterating` and `iterating*` are much newer and may be slightly experimental.
+
+### An example of `iterating`
+Here is a simple sieve of Eratosthones:
+
+```lisp
+(defun sieve (n)
+  (declare (type (integer 2) n))
+  (let ((l (isqrt n))
+        (a (make-array (+ n 1) :element-type 'bit :initial-element 1)))
+    (declare (type (integer 1) l)
+             (type simple-bit-vector a))
+    (iterating* next ((c 2 (1+ c))
+                      (marking (<= c l))
+                      (primes '() primes))
+      (if (<= c n)
+          (if (zerop (bit a c))
+              ;; not a prime
+              (next)
+            ;; A prime
+            (if marking
+                (do ((m (* c c) (+ m c)))
+                    ((> m n) (next :primes (cons c primes)))
+                  (setf (bit a m) 0))
+              (next :primes (cons c primes))))
+        (nreverse primes)))))
+```
+
+### Notes
+The init and step forms for `iterating` and `iterating*` have different semantics than for `do` and `do*`, but the same semantics as for `doing` from my `simple-loops` hack.  I am not sure that this is better -- simply being different is a bad thing -- but they work they way they do because I've ended up writing too many things which look like
+
+```lisp
+(do ((var <huge form> <same huge form>))
+    (...)
+  ...)
+```
+
+which using `iterating` would be
+
+```lisp
+(iterating next ((var <huge form>))
+  ...
+  (next))
+```
+
+This is one of the reasons that `iterating` is slightly experimental: I am not sure it's right and I won't know until I have used it more.
+
+`iterating` and `iterating*` need to allow keyword arguments for what appears to be the local recursive function.   Keyword argument parsing is clearly slightly hairy in general, so what they do is expand to something like this (this is the expansion for `iterating`:
+
+```lisp
+(labels ((#:n (x)
+           (flet ((n (&key ((:x #:x) 2))
+                    (#:n #:x)))
+             (declare (inline n))
+             ...)))
+  (#:n 2))
+```
+
+where all the gensyms that look the same are the same.  Both functions could have had the same name of course, but that seemed gratuitous, especially for anyone reading the macroexpansion.  The hope is that by using the little ancillary function, which is inlined, the keyword argument parsing will be faster.  However `iterating` & `iterating*` are meant to be expressive at the cost of perhaps being slow in some cases.
+
+`iterating` & `iterating*` went through a brief larval stage where they used optional arguments, but keyword arguments are so much more compelling we decided the possible performance cost was worth paying.
 
 ### Package, module
 `iterate` lives in `org.tfeb.hax.iterate` and provides `:org.tfeb.hax.iterate`.
@@ -1736,6 +1889,8 @@ where, in this case, all the `#:<in>` symbols are the same symbol.
 
 **`*default-metatronize-symbol-rewriter*`** is bound to the default symbol rewriter used by `metatronize`.  Changing it will change the behaviour of `metatronize` and therefore of `defmacro/m` and `macrolet/m`.  Reloading `metatronic` will reset it if you break things.
 
+**`rewrite-sources`** and **`rewrite-targets`** return a list of sources and targets from the rewrite table returned by `metatronize`.
+
 ### Notes
 Macros written with `defmacro/m` and `macrolet/m` in fact metatronize symbols *twice*: once when the macro is defined, and then again when it is expanded, using lists of rewritten & unique symbols from the first metatronization to drive a `rewriter` function.  This ensures that each expansion has a unique set of gensymized symbols:  with the above definition of `with-file-lines`, then
 
@@ -1753,9 +1908,55 @@ One consequence of this double-metatronization is that you should not use metatr
 
 `metatronize` is *not a code walker*: it just blindly replaces some symbols with gensymized versions of them.  Metatronic macros are typically easier to make more hygienic than they would otherwise be but they are very far from being hygienic macros.
 
-The tables used by`metatronize` are currently alists, which will limit its performance on vast structure.  They may not always be, but they probably will be since macro definitions are not usually vast.  Do not rely on them being alists.
+The tables used by`metatronize` are currently alists, which will limit its performance on vast structure.  They may not always be, but they probably will be since macro definitions are not usually vast.  Do not rely on them being alists, and in particular use `rewrite-sources` and `rewrite-targets` on the rewrite table.
 
 `metatronize` does deal with sharing and circularity in list structure properly (but only in list structure).  Objects which are not lists and not metatronic symbols are not copied of course, so if they were previously the same they still will be in the copy.
+
+### Writing more complicated macros
+All `defmacro/m` does is use `metatronize` to walk over the forms in the body of the macro, rewriting symbols appropriately.  The expansion of the `with-file-lines` macro above is
+
+```lisp
+(defmacro with-file-lines ((line file) &body forms)
+  (m2 (progn
+        `(with-open-file (#:<in> ,file)
+           (do ((,line (read-line #:<in> nil #:<in>)
+                       (read-line #:<in> nil #:<in>)))
+               ((eq ,line #:<in>))
+             ,@forms)))
+      '(#:<in>)
+      'nil))
+```
+
+where `m2` is an internal function which knows how to rewrite specific symbols: this is done so that even if you look at the expansion you can't extract the gensyms.
+
+This is fine for macros like that, but there's a common style of macro which looks like this:
+
+```lisp
+(defmacro iterate (name bindings &body body)
+  (expand-iterate name bindings body nil))
+```
+
+Where`expand-iterate` is probably some function which expands variations on `iterate`[^19].  Well, the answer is that it's complicated.  But where, in a function like `expand-iterate`, you have code like:
+
+```lisp
+(let ((secret-name (make-symbol ...)))
+  ...
+  `(labels ((,secret-name ...))
+     (,secret-name ...)))
+```
+
+You can replace this with
+
+```lisp
+(values
+ (metatronize
+  `(labels ((<secret-name> ...))
+     (<secret-name> ...))))
+```
+
+for instance.  Here `values` is just suppressing the other values from `metatronize` which you don't need in this case.
+
+However in general metatronic macros are far more useful for simple macros where there is no complicated expander function like this: that's what it was intended for.
 
 ### Package, module
 `metatronic` lives in and provides `:org.tfeb.hax.metatronic`.
@@ -1904,7 +2105,7 @@ If you want to have fine-grained control over log entry formats then two possibl
 - you could make the value of `*log-entry-formatter*` be a generic function which can then dispatch on its second argument to return an appropriate log format;
 - and/or you could define methods on `slog-to` for suitable `log-entry` subclasses which can select entry formats appropriately.
 
-The second approach allows you, for instance, to select locale-specific formats by passing keyword arguments to specify non-default locales to `slog-to`, rather than just relying on its class alone[^19].
+The second approach allows you, for instance, to select locale-specific formats by passing keyword arguments to specify non-default locales to `slog-to`, rather than just relying on its class alone[^20].
 
 ### The `logging` macro
 **`(logging ([(typespec destination ...) ...]) form ...)`** establishes dynamic handlers for log entries which will log to the values of the specified destinations.  Each `typespec` is as for `handler-bind`, except that the type `t` is rewritten as `log-entry`, which makes things easier to write.  Any type mentioned in `typespec` must be a subtype of `log-entry`.  The value of each destination is then found, with special handling for pathnames (see below) and these values are used as the destinations for calls to `slog-to`.  As an example the expansion of the following form:
@@ -1969,7 +2170,7 @@ One important reason for this behaviour of `logging` is to deal with this proble
 
 Because the absolute pathname of `foo.log`is computed and stored at the point of the logging macro you won't end up logging to multiple files: all the log entries will go to whatever the canonical version of `foo.log` was at the point that `logging` appeared.
 
-Finally note that calls to `slog` are completely legal but will do nothing outside the dynamic extent of a `logging` macro[^20], but `slog-to` will work quite happily and will write log entries.  This includes when given pathname arguments: it is perfectly legal to write code which just calls `(slog-to "/my/file.log" "a message")`.  See below on file handling.
+Finally note that calls to `slog` are completely legal but will do nothing outside the dynamic extent of a `logging` macro[^21], but `slog-to` will work quite happily and will write log entries.  This includes when given pathname arguments: it is perfectly legal to write code which just calls `(slog-to "/my/file.log" "a message")`.  See below on file handling.
 
 Note that destinations which correspond to files (pathnames and strings) are opened by `logging`, with any needed directories being created and so on.  This means that if those files *can't* be opened then you'll get an error immediately, rather than on the first call to `slog`.
 
@@ -2211,6 +2412,8 @@ The TFEB.ORG Lisp hax are copyright 1989-2022 Tim Bradshaw.  See `LICENSE` for t
 
 [^18]:	So `(apply #'eq (metatronize '(<x> <x>)))` is true but `(apply #'eq (metatronize '(<> <>)))` is false.
 
-[^19]:	An interim version of `slog` had a generic function, `log-entry-formatter` which was involved in this process with the aim of being able to select formats more flexibly, but it did not in fact add any useful flexibility.
+[^19]:	This is in fact how `iterate` and `iterate*` work now, with `iterating` and `iterating*` sharing another expansion function.
 
-[^20]:	Well: you could write your own `handler-bind` / `handler-case` forms, but don't do that.
+[^20]:	An interim version of `slog` had a generic function, `log-entry-formatter` which was involved in this process with the aim of being able to select formats more flexibly, but it did not in fact add any useful flexibility.
+
+[^21]:	Well: you could write your own `handler-bind` / `handler-case` forms, but don't do that.

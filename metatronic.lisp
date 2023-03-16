@@ -12,6 +12,8 @@
    #:macrolet/m
    #:define-compiler-macro/m
    #:metatronize
+   #:rewrite-sources
+   #:rewrite-targets
    #:default-metatronize-symbol-rewriter))
 
 (in-package :org.tfeb.hax.metatronic)
@@ -86,6 +88,16 @@ structure (only) is correctly copied."
                   this))))
       (values (rewrite form) rtab anons stab))))
 
+;;; These exist so that I can be vague about what the rewrite table is
+;;; (it might be a hashtable in future for instance) but users can
+;;; write something that does what M2 does.
+;;;
+(defun rewrite-sources (rewrites)
+  (mapcar #'car rewrites))
+
+(defun rewrite-targets (rewrites)
+  (mapcar #'cdr rewrites))
+
 (defun m2 (form metatrons anonymous)
   ;; Second quantization: this just exists so macroexpansions are
   ;; smaller
@@ -137,7 +149,7 @@ this."
          ,@(if doc (list doc) '())
          ,@decls
          (m2 (progn ,@metatronized-forms)
-                             ',(mapcar #'cdr rtab) ',anons)))))
+             ',(rewrite-targets rtab) ',anons)))))
 
 (defmacro macrolet/m (clauses &body forms)
   "MACROLET, metatronically"
@@ -153,8 +165,8 @@ this."
                                 ,@(if doc (list doc) '())
                                 ,@decls
                                 (m2 (progn ,@metatronized-forms)
-                                                    ',(mapcar #'cdr rtab)
-                                                    ',anons))))))
+                                    ',(rewrite-targets rtab)
+                                    ',anons))))))
                 clauses)
      ,@forms))
 
@@ -179,7 +191,7 @@ this."
          ,@(if doc (list doc) '())
          ,@decls
          (m2 (progn ,@metatronized-forms)
-                             ',(mapcar #'cdr rtab) ',anons)))))
+             ',(rewrite-targets rtab) ',anons)))))
 
 
 #||

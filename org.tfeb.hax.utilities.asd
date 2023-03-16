@@ -14,7 +14,5 @@
   "MIT"
   :homepage
   "https://github.com/tfeb/tfeb-lisp-hax"
-  :depends-on
-  ("org.tfeb.hax.collecting" "org.tfeb.hax.iterate")
   :components
   ((:file "utilities")))
