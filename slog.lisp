@@ -24,6 +24,7 @@
    #:log-entry-internal-time
    #:once-only-log-entry
    #:simple-log-entry
+   #:*default-log-entry-type*
    #:slog
    #:closing-opened-log-files
    #:log-file-truename
@@ -32,6 +33,7 @@
    #:close-open-log-files
    #:flush-open-log-files
    #:get-precision-universal-time
+   #:reset-precision-time-offsets
    #:default-log-entry-formatter
    #:*log-entry-formatter*
    #:slog-to
@@ -72,10 +74,15 @@
   ()
   (:documentation "simple SLOG condition"))
 
+(defvar *default-log-entry-type* 'simple-log-entry
+  "The default log entry type for SLOG
+
+This is SIMPLE-LOG-ENTRY by default.")
+
 (defun ensure-log-entry (datum arguments)
   (typecase datum
     (string
-     (make-condition 'simple-log-entry
+     (make-condition *default-log-entry-type*
                      :format-control datum
                      :format-arguments arguments))
     (log-entry
@@ -271,6 +278,12 @@
 ;;; Precision universal time
 ;;;
 
+;;; The zeros for UT and IT
+;;; (will be set below)
+;;;
+(defvar *ut0* 0)
+(defvar *it0* 0)
+
 (defun compute-image-time-offsets (&optional (tries 3))
   ;; Return a universal time and the internal time at the point it
   ;; ticked.  This necessarily takes more than a second.
@@ -299,7 +312,33 @@
                 (return-from compute-image-time-offsets
                   ;; Just average the two internal times we got to try and
                   ;; get a reasonable offset
-                  (list now (round (+ ib ia) 2)))))))))
+                  (values now (round (+ ib ia) 2)))))))))
+
+(defun reset-precision-time-offsets (&key report-only (tries 3))
+  "Reset, or check, the precision time offsets.
+
+Returns four values: a universal time and the internal time at which
+point the second ticked, and the previous values for these two.  By
+default this also sets the internal variables to the new values.
+
+If REPORT-ONLY is given as NIL this will not reset the internal values
+but only return them.
+
+TRIES (default 3) is the number of attempts to make to get this right.
+There will be a warning if more than one try is needed, and an error
+if more than TRIES is needed.
+
+This function necessarily takes at least a second to run."
+  (multiple-value-bind (ut0 it0) (compute-image-time-offsets tries)
+    (let ((old-ut0 *ut0*)
+            (old-it0 *it0*))
+      (unless report-only
+        (setf *ut0* ut0
+              *it0* it0))
+      (values ut0 it0 old-ut0 old-it0))))
+
+(eval-when (:load-toplevel :execute)
+  (reset-precision-time-offsets))
 
 (defconstant default-precision-time-rate
   (min internal-time-units-per-second 1000))
@@ -308,10 +347,11 @@
                                      (it (get-internal-real-time))
                                      (type 'rational)
                                      (rate default-precision-time-rate ratep)
-                                     (chide nil))
+                                     (chide nil)
+                                     &aux (ut0 *ut0*) (it0 *it0*))
   ;; Return two values: the most precise idea of the time we can work
   ;; out, and the number of significant decimal places (which is just
-  ;; (log rate 10)
+  ;; (log rate 10))
   (when chide
     (case type
       ((single-float short-float)
@@ -320,24 +360,23 @@
     (when (> rate internal-time-units-per-second)
       (warn "rate ~D is greater thant internal clock rate ~D"
             rate internal-time-units-per-second)))
-  (destructuring-bind (ut0 it0) (load-time-value (compute-image-time-offsets))
-    (let ((pt (+ ut0 (/ (round (* rate (- it it0)) internal-time-units-per-second)
-                        rate))))
-      (values
-       (ecase type
-         ((rational ratio) pt)
-         ((float double-float ) (* pt 1.0d0))
-         ((long-float) (* pt 1.0l0))
-         ((single-float) (* pt 1.0f0))
-         ((short-float) (* pt 1.0s0)))
-       rate
-       (cond
-        ((not ratep)
-         (load-time-value (ceiling (log default-precision-time-rate 10))))
-        ((= rate internal-time-units-per-second)
-         (load-time-value (ceiling (log internal-time-units-per-second 10))))
-        (t
-         (ceiling (log rate 10))))))))
+  (let ((pt (+ ut0 (/ (round (* rate (- it it0)) internal-time-units-per-second)
+                      rate))))
+    (values
+     (ecase type
+       ((rational ratio) pt)
+       ((float double-float ) (* pt 1.0d0))
+       ((long-float) (* pt 1.0l0))
+       ((single-float) (* pt 1.0f0))
+       ((short-float) (* pt 1.0s0)))
+     rate
+     (cond
+      ((not ratep)
+       (load-time-value (ceiling (log default-precision-time-rate 10))))
+      ((= rate internal-time-units-per-second)
+       (load-time-value (ceiling (log internal-time-units-per-second 10))))
+      (t
+       (ceiling (log rate 10)))))))
 
 (defun default-log-entry-formatter ()
   (lambda (to log-entry)

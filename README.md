@@ -101,6 +101,19 @@ and now
 
 `collecting` is older than `with-collectors` by more than a decade I think.  However it has an obvious definition as a shim on top of `with-collectors` and, finally, that now *is* its definition.
 
+See `collect-into` below, which can be handed a local collector function as an argument and will do the right thing.  This means that, for instance this will work:
+
+```lisp
+(defun outer (x)
+  (collecting
+    (inner x #'collect)))
+
+(defun inner (x collector)
+  ...
+  (collect-into collector ...)
+  ...)
+```
+
 ### General accumulators: `with-accumulators`
 **`with-accumulators`** is a variation on the theme of `with-collectors`: it allows you to accumulate things based on any function and a secret accumulator variable.  `with-accumulators` takes a number of accumulator specifications as its first argument.   These can have either a simple form and a more general form which may be extended in future.
 
@@ -250,7 +263,7 @@ If you provide initial contents and ask for it not to be copied the list will be
 * `collector` is the collector;
 * `value` is the object to collect.
 
-It returns its second argument.
+It returns its second argument.  If `collector` is a function it will simply call it with the second argument: this means it can be used with the local functions bound by `collecting` / `with-collactors` as well.
 
 **`collector-contents`** returns the contents of a collector: the list being collected by that collector.   It has an optional argument, `appending`: if given this is appended to the value returned, either by using the tail pointer to modify the last cons of the list being built or by simply returning `appending` directly if nothing has been collected.  If `appending` is not given, the collector can still be used after this, and the list returned by `collector-contents` will be destructively modified in that case.  If `appending` is given then the collector is generally junk as the tail pointer is not updated: doing so would involve traversing `appending` and the whole point of this hack is to avoid doing that.  See `nconc-collector-onto` for a function which *does* update the tail pointer.
 
@@ -2069,9 +2082,11 @@ In this case `logging` will log to two destinations for `my-log-entry`.
 **`once-only-log-entry`** is a condition type which will be logged to at most one destination.
 
 ### Logging functions
-**`(slog datum [arguments ...])`** takes arguments which denote a condition of default type `simple-log-entry` and signals that condition.  The sense in which the 'arguments denote a condition' is exactly the same as for `signal` &c, except that the default condition type is `simple-log-entry`.
+**`(slog datum [arguments ...])`** takes arguments which denote a condition of default type `simple-log-entry` and signals that condition.  The sense in which the 'arguments denote a condition' is exactly the same as for `signal` &c, except that the default condition type is the value of `*default-log-entry-type*`.
 
 **`(slog-to destination datum [arguments ...])`** creates a log entry as `slog` does, but then rather than signalling it logs it directly to `destination`.  `slog-to` is what ends up being called when logging destinations are specified by the `logging` macro, but you can also call it yourself.
+
+**`*default-log-entry-type*`** is the condition class used by `slog` when its first argument is a string.  Its default value is `simple-log-entry` but you can bind or assign to it to control what class is used.
 
 ### Log destinations and `slog-to`
 The `logging` macro and the `slog-to` generic function know about *log destinations*.  Some types of these are predefined, but you can extend the notion of what a log destination is either by defining methods on `slog-to` (see below for caveats) or, perhaps better, by providing a *fallback destination handler* which `slog-to` will call for destination handlers it does not have specialised methods for.  This fallback handler can be bound dynamically.
@@ -2334,6 +2349,31 @@ There are some sanity tests for this code which are run on loading `slog`, becau
 
 You can use `get-precision-universal-time` to write your own formatters, using `log-entry-internal-time` to get the time the entry was created.
 
+**`reset-precision-time-offsets`** resets, or just reports, the offsets for precision time.  Resetting can be necessary to reset the calibration, for instance when an image is saved and reloaded.  It returns four values:
+
+- the universal time at which the clock ticked;
+- the corresponding internal time;
+- the previous value of the universal time at which the clock ticked;
+- the previous corresponding internal time.
+
+`reset-prevision-time-offsets` takes two keyword arguments:
+
+- `report-only` says just to report the four values rather than resetting the internal parameters;
+- `tries` tells it how many times to try: if it takes more than a single attempt there will be a warning, and an error if more than `tries`.  The default value is `3`.
+
+`reset-precision-time-offsets` takes at least second to run: it's the function that gets called when `slog` is loaded.
+
+A function defined as
+
+```lisp
+(defun ts ()
+  (multiple-value-bind (ut0 it0 put0 pit0) (reset-precision-time-offsets :report-only t)
+    (values (float (- ut0 (/ it0 internal-time-units-per-second)) 1.0d0)
+            (float (- put0 (/ pit0 internal-time-units-per-second)) 1.0d0))))
+```
+
+Should, unless the precision time needs to be reset, return two very close values, and probably two values which are actually the same.
+
 ### An example: rotating log files
 ```lisp
 (defun rotate-log-files (&key (all nil))
@@ -2372,7 +2412,7 @@ Logging to pathnames rather than explicitly-managed streams may be a little slow
 
 ---
 
-The TFEB.ORG Lisp hax are copyright 1989-2022 Tim Bradshaw.  See `LICENSE` for the license.
+The TFEB.ORG Lisp hax are copyright 1989-2023 Tim Bradshaw.  See `LICENSE` for the license.
 
 ---
 

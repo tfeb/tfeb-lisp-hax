@@ -258,14 +258,22 @@ pointer and updates the tail pointer appropriately."
 (defun collect-into (collector value)
   "Collect VALUE into COLLECTOR, returning VALUE.
 
-This is Interlisp's TCONC."
-  (let ((it (list value)))
-    (if (null (cdr collector))
-        (setf (car collector) it
-              (cdr collector) it)
-      (setf (cdr (cdr collector)) it
-            (cdr collector) it))
-    value))
+If COLLECTOR is something made by MAKE-COLLECTOR, do the right thing.
+If it is a function (such as the local functions defined by COLLECTING
+/ WITH-COLLECTORS), simply call it with the value.
+
+This is the closest equivalent to Interlisp's TCONC."
+  (etypecase collector
+    (function
+     (funcall collector value))
+    (cons
+     (let ((it (list value)))
+       (if (null (cdr collector))
+           (setf (car collector) it
+                 (cdr collector) it)
+         (setf (cdr (cdr collector)) it
+               (cdr collector) it))
+       value))))
 
 (defun nconc-collectors (collector &rest collectors)
   ;; Note unlike APPEND it makes no sense to call this with no
