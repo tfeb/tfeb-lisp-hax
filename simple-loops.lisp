@@ -26,6 +26,7 @@
    :org.tfeb.hax.utilities)
   (:export
    #:doing #:doing*
+   #:dolists
    #:passing #:passing*
    #:do-passing #:do-passing*
    #:failing #:failing*
@@ -262,11 +263,55 @@ of the last form in the body."
 (looping/values ((<var> ...) <form>) ...) binds the <var>s to the
 values of <form> and hhen updates them with the values of the last
 form in the body.  (looping/values ((<var> ...) <form> ...) binds the
-<var>s to the cobined values of all the <form>'s and hen updates them
+<var>s to the cobined values of all the <form>'s and then updates them
 with the values of the last form in the body.  As with LOOPING there
 is no termination condition but the body is wrapped in a block named
 NIL so RETURN will work."
   `(looping/values* ((,variables ,@form/s)) ,@decls/body))
+
+(defmacro dolists (bindings &body decls/forms)
+  "Like DOLIST but with multiple lists
+
+Each BINDING is either (var init) or (var init value).  As many values
+are returned as bindings with value forms, so this may return between
+no values and as manu values as bindings.  The inits are evaluated in
+parallel (nothing else really makes much sense). The loop ends when
+the first list terminates. At least one the of variables will
+therefore be NIL when the loop terminates (same as for DOLIST, whee
+the only variable is NIL when the loop terminates)."
+  ;; This was briefly done with DOING, but this seems nicer.  Note
+  ;; this implementetion rebinds the variables on each iteration.
+  (multiple-value-bind (vars tail-vars inits values)
+      (with-collectors (var tail-var init value)
+        (dolist (binding bindings)
+          (typecase binding
+            (cons
+             (let ((l (list-length binding)))
+               (unless (and (<= 2 l 3)
+                            (symbolp (first binding)))
+                 (error "binding ~S is malformed" binding))
+               (var (first binding))
+               (init (second binding))
+               (tail-var (make-symbol (concatenate 'string (string (first binding))
+                                                   "-TAIL")))
+               (when (= l 3)
+                 (value (third binding)))))
+            (t
+             (error "hopeless binding ~S" binding)))))
+    (multiple-value-bind (decls forms) (parse-simple-body decls/forms)
+    `(looping ,(mapcar #'list tail-vars inits)
+       (let ,(mapcar (lambda (var tail-var)
+                      `(,var (car ,tail-var)))
+                    vars tail-vars)
+         ,@decls
+         (when (or ,@(mapcar (lambda (tail)
+                               `(null ,tail))
+                             tail-vars))
+           (return (values ,@values)))
+         ,@forms
+         (values ,@(mapcar (lambda (tail-var)
+                             `(cdr ,tail-var))
+                           tail-vars)))))))
 
 (defmacro escaping ((escape &rest defaults) &body forms)
   "Bind a local escape function
@@ -289,5 +334,6 @@ ESCAPING."
                   (if (null args)
                       (values ,@defaults)
                     (values-list args)))))
-         (declare (inline ,escape))
+         (declare (inline ,escape)
+                  (dynamic-extent (function ,escape)))
          ,@forms))))

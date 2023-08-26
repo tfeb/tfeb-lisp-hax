@@ -99,6 +99,16 @@ and now
 (1 2)
 ```
 
+It would be possible, perhaps, to gain some efficiency by declaring the collectors `dynamic-extent`, but I've chosen not to do that so the semantics is more coherent.  If you want the efficiency you can always make the appropriate declaration yourself:
+
+```lisp
+(with-collectors (c)
+  (declare (dynamic-extent (function c)))
+  ...)
+```
+
+will work, for instance.
+
 `collecting` is older than `with-collectors` by more than a decade I think.  However it has an obvious definition as a shim on top of `with-collectors` and, finally, that now *is* its definition.
 
 See `collect-into` below, which can be handed a local collector function as an argument and will do the right thing.  This means that, for instance this will work:
@@ -1666,6 +1676,18 @@ Once the variables are bound everything is exactly like `looping`: it is only th
 will evaluate to `1 2 3 1` for instance (and will not loop at all).
 
 **`escaping`** provides a general named escape construct.  `(escaping (<escaper> &rest <defaults>) ...)` binds `<escaper>` as a local function which will immediately return from `escaping`, returning either its arguments as multiple values, or the values of `<defaults>` as multiple values.  The forms in `<defaults>` are not evaluated if they are not used: if they are evaluated they're done in their lexical environment but in the dynamic environment where the escape function is called.
+
+**`dolists`** is like `dolist` but for multiple lists.  Additionally it has more control over what value or values are returned.  The syntax is `(dolists ((<var> <list-form> [<result-form>]) ...) ...)`, and as many values are returned as there are `<result-form>`s.  Thus
+
+```lisp
+(dolists ((v1 '(1 2 3))
+          (v2 '(1 2 3 4) v2))
+  (format t "~&~S ~S~%" v1 v2))
+```
+
+will print each value of `v1` and `v2` with the last being `3` and `3`, and then return `4`.  There is a subtelty here: for `dolist` the variable is `nil` at the point the iiteration terminates: `(dolist (v '(1 2 3) v))` evaluates to `nil`.  `dolists` generalises this: at the point the iteration terminates at least one of the variables will be `nil`.  The variables which are *not* `nil`, corresponding to lists longer than the shortest list, will be bound the the vakue of the next element of their list.
+
+As with `dolist` it is not specified whether the iteration variable is rebound for each iteration, or a single binding is mutated.
 
 `escaping` is obviously a shim around `(block ... (return-from ...) ...)` and there are the same constraints on scope that blocks have: you can't call the escape function once control has left the form which established it.
 
