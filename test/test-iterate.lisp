@@ -41,6 +41,30 @@
                 (declare (ignorable x))
                 y))))
 
+;;; Test that the scope of local functions is correct: they were wrong for a
+;;; very long time
+;;;
+
+(define-test ("org.tfeb.hax.iterate" "iterate local function not in scope of initforms")
+  (is eql 1
+      (let ((v 0))
+        (flet ((foo (x)
+                 (setf v x)))
+          (iterate foo ((x (foo 1)))
+            (declare (ignore x))
+            v)))))
+
+(define-test ("org.tfeb.hax.iterate" "iterate* local function not in scope of initforms")
+  (is-values
+      (let ((v 0))
+        (flet ((foo (x)
+                 (setf v x)))
+          (iterate* foo ((x (foo 1)) (y (1+ x)))
+            (declare (ignore x))
+            (values v y))))
+    (= 1)
+    (= 2)))
+
 (define-test ("org.tfeb.hax.iterate" "iterating basic")
   (is = 11 (iterating n ((i 0 (1+ i)))
              (if (> i 10) i (n))))
