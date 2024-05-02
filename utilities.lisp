@@ -5,7 +5,8 @@
   (:use :cl)
   (:export
    #:parse-docstring-body
-   #:parse-simple-body))
+   #:parse-simple-body
+   #:with-names))
 
 (in-package :org.tfeb.hax.utilities)
 
@@ -36,3 +37,17 @@ a list of forms."
       (multiple-value-bind (decls forms)
           (parse-simple-body doc/decls/forms)
         (values nil decls forms))))
+
+(defmacro with-names ((&rest clauses) &body forms)
+  "Bind a bunch of variables to fresh symbols with the same name
+
+Optionally you can specify the name by giving a clause as (var <string-designator>)."
+  `(let ,(mapcar (lambda (clause)
+                   (etypecase clause
+                     (symbol
+                      `(,clause (make-symbol ,(string clause))))
+                     (cons
+                      (destructuring-bind (name sd) clause
+                        `(,name (make-symbol (string ,sd)))))))
+                 clauses)
+     ,@forms))
