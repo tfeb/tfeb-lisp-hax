@@ -4,7 +4,7 @@
 ;; Author            - Tim Bradshaw (tfb at lostwithiel)
 ;; Created On        - 1989
 ;; Status            - Unknown
-;; 
+;;
 ;; $Id$
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
@@ -53,10 +53,10 @@ function so can be passed as an argument, or returned.  COLLECT
 returns its argument. See WITH-COLLECTORS for which this COLLECTING is
 now a shim"
   `(with-collectors (collect) ,@forms))
-                          
+
 (defmacro with-collectors ((&rest collectors) &body forms)
-  ;; multiple-collector version of COLLECTING.
-  "Collect some things into lists forwards.  
+  ;; multiple-collector version of COLLECTING
+  "Collect some things into lists forwards.
 
 The names in COLLECTORS are defined as local functions, which each
 collect into a separate list.  The collector functions return their
@@ -73,19 +73,22 @@ secret tail pointers and so should be efficient."
                           (make-symbol (concatenate 'string
                                                     (symbol-name c) "-TAIL")))
                       collectors)))
-    `(let (,@cvns ,@ctns)
-       (flet ,(mapcar (lambda (cn cvn ctn)
+    `(let ,(mapcar (lambda (cvn)
+                     `(,cvn (list nil)))
+                   cvns)
+       (declare (type list ,@cvns))
+       (let ,(mapcar #'list ctns cvns)
+         (declare (type list ,@ctns))
+         (flet ,(mapcar (lambda (cn ctn)
                         `(,cn (it)
-                              (if ,cvn
-                                  (setf (cdr ,ctn) (list it)
-                                        ,ctn (cdr ,ctn))
-                                (setf ,ctn (list it)
-                                      ,cvn ,ctn))
+                              (setf ,ctn (push it (cdr (the cons ,ctn))))
                               it))
-                      collectors cvns ctns)
+                        collectors ctns)
          (declare (inline ,@collectors))
          ,@forms)
-       (values ,@cvns))))
+       (values ,@(mapcar (lambda (cvn)
+                           `(cdr ,cvn))
+                         cvns))))))
 
 (defmacro collecting-values ((&rest collectors) &body form/s)
   ;; Based on an idea by Zyni
