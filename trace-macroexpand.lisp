@@ -37,6 +37,7 @@
    #:*trace-macroexpand-traced-packages*
    #:*trace-macroexpand-traced-names*
    #:*trace-macroexpand-printer*
+   #:*trace-macroexpand-output*
    #:trace-macroexpand
    #:macroexpand-traced-p
    #:call/macroexpand-tracing
@@ -58,6 +59,11 @@
 
 (defvar *trace-macroexpand-print-circle* *print-circle*
   "The value of *PRINT-CIRCLE* used when tracing macroexpansions")
+
+(defvar *trace-macroexpand-output* (make-synonym-stream '*trace-output*)
+  "The stream TRACE-MACROEXPAND prints on
+
+By default this is a synonym stream to *TRACE-OUTPUT*.")
 
 (defvar *trace-macroexpand-maybe-trace* t
   "Should we even consider tracing?
@@ -198,13 +204,13 @@ The return value is ignored.")
       (let ((expanded-form (funcall *wrapped-macroexpand-hook*
                                     macro-function macro-form environment)))
         (if *trace-macroexpand-printer*
-            (funcall *trace-macroexpand-printer* *trace-output*
+            (funcall *trace-macroexpand-printer* *trace-macroexpand-output*
                      macro-form expanded-form environment)
           (let ((*print-length* *trace-macroexpand-print-length*)
                 (*print-level* *trace-macroexpand-print-level*)
                 (*print-circle* *trace-macroexpand-print-circle*)
                 (*print-pretty* t))
-            (format *trace-output* "~&~S~% -> ~S~%"
+            (format *trace-macroexpand-output* "~&~S~% -> ~S~%"
                     macro-form expanded-form)
             expanded-form)))
     (funcall *wrapped-macroexpand-hook*

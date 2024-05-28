@@ -138,6 +138,7 @@ The more general form is `(accumulator operator &key initially type returner)`.
 - `accumulator`, `operator` and `initially` are the same as before.
 - `type` is a type specification which is used to declare the type of the underlying variable.
 - `returner` denotes a function of one argument which, if given, is called with the final value of the accumulator: its return value is used instead of the value of the accumulator.
+- `default`, if given, causes the accumulator function to have a single optional argument for which this expression provides the default value.
 - There may be additional keyword arguments in future.
 
 An example: let's say you want to walk some cons tree counting symbols:
@@ -163,17 +164,17 @@ Then
 2
 ```
 
-A more general function can count symbols and conses:
+A more general function can count symbols and conses, with defaults:
 
 ```lisp
 (defun count-symbols-and-conses (tree)
-  (with-accumulators ((s +)
-                      (c +))
+  (with-accumulators ((s + :default 1)
+                      (c + :default 1))
     (labels ((walk (thing)
                (typecase thing
                  (null)
-                 (symbol (s 1))
-                 (cons (c 1)
+                 (symbol (s))
+                 (cons (c)
                        (walk (car thing))
                        (walk (cdr thing)))
                  (t))))
@@ -256,7 +257,7 @@ is equivalent to
   (b b))
 ```
 
-`with-collectors` doesn't actually care about whether it's within a suitable form: it just does its thing regardless.
+`collecting-values` doesn't actually care about whether it's within a suitable form: it just does its thing regardless.
 
 ### Explicit collectors
 `collecting` and friends were inspired by facilities in Interlisp-D[^5], and specifically by `TCONC`, `DOCOLLECT` and `ENDCOLLECT`.  These collected things by maintaining an explicit cons where the car was the list being collected and the cdr was the last cons of that list.  The nice thing about this is that these conses can be passed around as variables.  So, at long last, here are equivalents of those functions in CL.
@@ -264,7 +265,7 @@ is equivalent to
 **`make-collector`** makes an object which can be used for collecting a list.  It takes two keyword arguments:
 
 - `initial-contents` is the initial contents of the collector, the default being `()`;
-- `copy` controls wether the initial contents is copied, with the default being `t`.
+- `copy` controls whether the initial contents is copied, with the default being `t`.
 
 If you provide initial contents and ask for it not to be copied the list will be destructively modified.
 
@@ -1131,7 +1132,7 @@ CL-USER 52 > (trace-macro)
 ### How it works, caveats
 All `trace-macroexpand` does is to install a hook on `*macroexpand-hook` and use this to drive the tracing.  It is careful to call any preexisting hook as well, so it does not interfere with anything else.  However, don't unilaterally change `*macroexpand-hook*` while macro tracing is active: turn it off first, as things will become confused otherwise.  If it detects bad states (for instance if tracing is off but the wrapped hook isn't `nil`, or if tracing seems to be on but the wrapped hook *is* `nil`) it will signal errors and there are restarts which may help recover.  But it's best to not get into these states.
 
-Tracing output goes to `*trace-output*`.
+Tracing output goes to `*trace-macroexpand-output*`, which is by default a synonym stream to `*trace-output*`.
 
 ### The interface
 The interface is fairly large, as there are a reasonable number of options, some of which can be controlled in various ways.
@@ -1170,6 +1171,8 @@ It returns the canonicalised list of package designators being traced: each of t
 **`*trace-macroexpand-traced-packages*`** is the canonical list of package designators maintained by the previous two functions.  You can bind or modify this.
 
 **`*trace-macroexpand-print-length*`**, **`*trace-macroexpand-print-level*` and `*trace-macroexpand-print-cicrle*`** are the values of `*print-length*`, `*print-level*` and `*print-circle*` in effect during tracing.  By default they are `3`, `2` and the ambient value of `*print-circle*` when the system is loaded respectively.
+
+**`*trace-macroexpand-output`** is the stream to which tracing goes.  By default it is a synonym stream to `*trace-output*`.
 
 **`*trace-macroexpand-printer*`**, if it is not `nil`, should be a designator for a function of four arguments: the stream to trace on, the macro form, the expanded macro form and the environment: it will be called to print or otherwise record the expansion.  In this case no binding is done of printer control variables: the function is responsible for anything it wants to do.
 
@@ -2434,7 +2437,7 @@ Logging to pathnames rather than explicitly-managed streams may be a little slow
 
 ---
 
-The TFEB.ORG Lisp hax are copyright 1989-2023 Tim Bradshaw.  See `LICENSE` for the license.
+The TFEB.ORG Lisp hax are copyright 1989-2024 Tim Bradshaw.  See `LICENSE` for the license.
 
 ---
 

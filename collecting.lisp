@@ -169,7 +169,8 @@ values, possibly via the returner functions."
                  (destructuring-bind (name on &key
                                            (initially `(,on))
                                            (type nil)
-                                           (returner nil)) a
+                                           (returner nil)
+                                           (default nil defaultp)) a
                    (unless (symbolp name)
                      (error "the name of accumulator ~S isn't a symbol" a))
                    (unless (or (symbolp on)
@@ -183,7 +184,8 @@ isn't a symbol or lambda expression" a))
                      (error "the return operator of accumulator ~S~
 isn't a symbol of lambda expression" a))
                    `(name ,name on ,on init ,initially
-                          type ,type returner ,returner)))))
+                          type ,type returner ,returner
+                          arglist ,(if defaultp `(&optional (it ,default)) '(it)))))))
              (t
               (error "hopeless accumulator ~S" a))))
          (getter (property &optional (default nil))
@@ -194,6 +196,7 @@ isn't a symbol of lambda expression" a))
            (inits (mapcar (getter 'init) parsed))
            (types (mapcar (getter 'type) parsed))
            (returners (mapcar (getter 'returner) parsed))
+           (arglists (mapcar (getter 'arglist) parsed))
            (ons (mapcar (getter 'on) parsed))
            (vns (mapcar (lambda (name) (make-symbol (symbol-name name)))
                         names)))
@@ -201,9 +204,9 @@ isn't a symbol of lambda expression" a))
          ,@(mapcan (lambda (v tp)
                      (if tp `((declare (type ,tp ,v))) '()))
                    vns types)
-         (flet ,(mapcar (lambda (name on vn)
-                          `(,name (it) (setf ,vn (,on ,vn it)) it))
-                        names ons vns)
+         (flet ,(mapcar (lambda (name on vn arglist)
+                          `(,name ,arglist (setf ,vn (,on ,vn it)) it))
+                        names ons vns arglists)
            (declare (inline ,@names))
            ,@forms)
          (values ,@(mapcar (lambda (vn returner)
