@@ -6,7 +6,9 @@
   (:export
    #:parse-docstring-body
    #:parse-simple-body
-   #:with-names))
+   #:with-names
+   #:thunk
+   #:thunk*))
 
 (in-package :org.tfeb.hax.utilities)
 
@@ -51,3 +53,20 @@ Optionally you can specify the name by giving a clause as (var <string-designato
                         `(,name (make-symbol (string ,sd)))))))
                  clauses)
      ,@forms))
+
+;;; Because it's time
+;;;
+
+(defmacro thunk (&body body)
+  "Function of no arguments"
+  `(lambda ()
+     ,@body))
+
+(defmacro thunk* (&body body)
+  ;; Can't use WITH-NAMES yet
+  "Function of any number of ignored arguments"
+  (let ((<args> (make-symbol "<ARGS>")))
+    `(lambda (&rest ,<args>)
+       (declare (dynamic-extent ,<args>)
+                (ignore ,<args>))
+       ,@body)))

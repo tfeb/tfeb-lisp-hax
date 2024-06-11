@@ -2435,6 +2435,20 @@ Logging to pathnames rather than explicitly-managed streams may be a little slow
 ### Package, module
 `slog` lives in and provides `:org.tfeb.hax.slog`.
 
+## Utilities
+This is used both by other hax and by other code I've written.  Things in this system *may not be stable*: it should be considered mostly-internal.  However, changes to it *are* reflected in the version number of things, since other systems can depend on things in it.
+
+Here is what it currently provides.
+
+- `parse-docstring-body` parses the body of a function with possible documentation and declarations into three values: docstring, list of declarations and remaining forms.
+- `parse-simple-body` is like `parse-docstring-body` but it does not handle docstrings & only returns two values.
+- `with-names` binds variables to uninterned symbols with the same name by default: `(with-names (<foo>) ...)`will bind `<foo>` to a fresh uninterned symbol with name `"<FOO>"`.  `(with-names ((<foo> foo)) ...)` will bind `<foo>` to a fresh uninterned symbol with name `"FOO"`.
+- `thunk` makes anonymous functions with no arguments: `(thunk ...)` is `(lambda () ...)`.
+- `thunk*` makes anonymous functions which take an arbitrary number of arguments and ignore them all.
+
+### Package, module
+The utilities live in and provide `:org.tfeb.hax.utilities`.
+
 ---
 
 The TFEB.ORG Lisp hax are copyright 1989-2024 Tim Bradshaw.  See `LICENSE` for the license.
