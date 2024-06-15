@@ -235,9 +235,6 @@ isn't a symbol of lambda expression" a)))
                                  v)))
                            parsed vars))))))
 
-(with-accumulators ((s + :by 1))
-  (s))
-
 ;;;; Something more like Interlisp-D's DOCOLLECT / ENDCOLLECT / TCONC
 ;;; See interlisp.org/docs/IRM.pdf
 ;;;
