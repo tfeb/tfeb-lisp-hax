@@ -136,12 +136,14 @@ the argument to the accumulator function.  Its return value is the new
 value of the accumulator.
 
 The extensible specification is (name operator &key initially type
-returner).  In this case name, operator & initially mean exactly the
-same as previously, but type is a type specification for the variable
-which underlies the accumulator, and returner denotes a function of
-one argument, the final value of the accumulator, whose return value
-is used instead of the final value.  There may in future be additional
-keywords.
+returner default by).  In this case name, operator & initially mean
+exactly the same as previously, but type is a type specification for
+the variable which underlies the accumulator, and returner denotes a
+function of one argument, the final value of the accumulator, whose
+return value is used instead of the final value.  If default is given
+then the local function takes an optional argument whose default it
+is.  If by is given then it takes no arguments and this is the
+increment.  These two arguments are mutually exclusive.
 
 The local accumulator functions are declared inline, and return their
 argument.
@@ -164,13 +166,14 @@ values, possibly via the returner functions."
                                     (eql (first on) 'lambda)))
                      (error "the operator of accumulator ~S isn't a symbol or lambda"
                             a))
-                   `(name ,name on ,on init ,init)))
+                   `(name ,name on ,on init ,init arglist (it))))
                 (otherwise
                  (destructuring-bind (name on &key
                                            (initially `(,on))
-                                           (type nil)
-                                           (returner nil)
-                                           (default nil defaultp)) a
+                                           (type nil typep)
+                                           (returner nil returnerp)
+                                           (default nil defaultp)
+                                           (by nil byp)) a
                    (unless (symbolp name)
                      (error "the name of accumulator ~S isn't a symbol" a))
                    (unless (or (symbolp on)
@@ -178,42 +181,62 @@ values, possibly via the returner functions."
                                     (eql (first on) 'lambda)))
                      (error "the operator of accumulator ~S~
 isn't a symbol or lambda expression" a))
-                   (unless (or (symbolp returner)
-                               (and (consp returner)
-                                    (eql (first returner) 'lambda)))
-                     (error "the return operator of accumulator ~S~
-isn't a symbol of lambda expression" a))
-                   `(name ,name on ,on init ,initially
-                          type ,type returner ,returner
-                          arglist ,(if defaultp `(&optional (it ,default)) '(it)))))))
+                   (when returnerp
+                     (unless (or (symbolp returner)
+                                 (and (consp returner)
+                                      (eql (first returner) 'lambda)))
+                       (error "the return operator of accumulator ~S~
+isn't a symbol of lambda expression" a)))
+                   (when (and defaultp byp)
+                     (error "default and by can't both be given in ~S" a))
+                   (let ((p `(name ,name on ,on init ,initially
+                                   arglist ,(cond
+                                             (byp `(&aux (it ,by)))
+                                             (defaultp `(&optional (it ,default)))
+                                             (t '(it))))))
+                     (when typep
+                       (setf (getf p 'type) type))
+                     (when returnerp
+                       (setf (getf p 'returner) returner))
+                     p)))))
              (t
               (error "hopeless accumulator ~S" a))))
-         (getter (property &optional (default nil))
-           (lambda (plist)
-             (getf plist property default))))
+         (getp (plist p)
+           (let* ((d (load-time-value (cons nil nil)))
+                  (v (getf plist p d)))
+                   (if (eq v d)
+                       (values nil nil)
+                     (values v t)))))
     (let* ((parsed (mapcar #'parse-accumulator accumulators))
-           (names (mapcar (getter 'name) parsed))
-           (inits (mapcar (getter 'init) parsed))
-           (types (mapcar (getter 'type) parsed))
-           (returners (mapcar (getter 'returner) parsed))
-           (arglists (mapcar (getter 'arglist) parsed))
-           (ons (mapcar (getter 'on) parsed))
-           (vns (mapcar (lambda (name) (make-symbol (symbol-name name)))
-                        names)))
-      `(let ,(mapcar #'list vns inits)
-         ,@(mapcan (lambda (v tp)
-                     (if tp `((declare (type ,tp ,v))) '()))
-                   vns types)
-         (flet ,(mapcar (lambda (name on vn arglist)
-                          `(,name ,arglist (setf ,vn (,on ,vn it)) it))
-                        names ons vns arglists)
-           (declare (inline ,@names))
+           (vars (mapcar (lambda (p)
+                            (make-symbol (symbol-name (getf p 'name))))
+                          parsed)))
+      `(let ,(mapcar (lambda (p v)
+                       `(,v ,(getp p 'init)))
+                     parsed vars)
+         ,@(mapcan (lambda (p v)
+                     (multiple-value-bind (type typep) (getp p 'type)
+                       (if typep `((declare (type ,type ,v))) '())))
+                   parsed vars)
+         (flet ,(mapcar (lambda (p v)
+                          (let ((arglist (getp p 'arglist))
+                                (on (getp p 'on))
+                                (name (getp p 'name)))
+                            `(,name ,arglist (setf ,v (,on ,v it)) it)))
+                        parsed vars)
+           (declare (inline ,@(mapcar (lambda (p)
+                                        (getp p 'name))
+                                      parsed)))
            ,@forms)
-         (values ,@(mapcar (lambda (vn returner)
-                             (if returner
-                                 `(,returner ,vn)
-                               vn))
-                           vns returners))))))
+         (values ,@(mapcar (lambda (p v)
+                             (multiple-value-bind (returner returnerp) (getp p 'returner)
+                               (if returnerp
+                                   `(,returner ,v)
+                                 v)))
+                           parsed vars))))))
+
+(with-accumulators ((s + :by 1))
+  (s))
 
 ;;;; Something more like Interlisp-D's DOCOLLECT / ENDCOLLECT / TCONC
 ;;; See interlisp.org/docs/IRM.pdf

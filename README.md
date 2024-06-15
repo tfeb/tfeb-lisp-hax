@@ -133,12 +133,13 @@ The simple form is `(accumulator operatior &optional initially)`.
 - `operator` is the operator corresponding to the accumulator: this denotes a function which can take either two or no arguments: it is called with no arguments to initialise the variable underlying the accumulator if there is no `initially` value (this is the only case it is called with no arguments), or with the current value of the accumulator and the thing to be accumulated when the local function is called to accumulate something.
 - `initially`, if given, is the initial value.  If it is not given the accumulator is initialised by calling the operator function with no arguments.
 
-The more general form is `(accumulator operator &key initially type returner)`.
+The more general form is `(accumulator operator &key initially type returner default by)`.
 
 - `accumulator`, `operator` and `initially` are the same as before.
 - `type` is a type specification which is used to declare the type of the underlying variable.
 - `returner` denotes a function of one argument which, if given, is called with the final value of the accumulator: its return value is used instead of the value of the accumulator.
 - `default`, if given, causes the accumulator function to have a single optional argument for which this expression provides the default value.
+- `by`, if given, means that the accumulator takes no arguments and steps the value by `by`.  `by` and `default` can't both be given.
 - There may be additional keyword arguments in future.
 
 An example: let's say you want to walk some cons tree counting symbols:
@@ -195,6 +196,16 @@ The accumulator functions are declared inline and return their argument, which i
 There is no single-accumulator special case: it didn't seem useful as you need to specify the accumulation operator anyway.
 
 The accumulation operator and returner are *names* which denote functions, not functions: they can be either symbols or a lambda expressions, they can't be functions.  Specifically it needs to be the case that `(operator ...)` is a valid form.  That means that if you do want to use some function you'd need to provide an operator which was, for instance `(lambda (into val) (funcall f into val))`.
+
+Both `by` and `default` are forms which are evaluated at call time in the current lexical and dynamic environment (they're simply the defaults for arguments).  So this will return `3`:
+
+```lisp
+(let ((by 1))
+  (with-accumulators ((a + :by by))
+    (a)
+    (setf by 2)
+    (a)))
+```
 
 `with-accumulators` is very much newer than either of the other two macros, and may be more buggy.  It is certainly the case that new keywords may appear in accumulator specifications.
 

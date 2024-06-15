@@ -25,6 +25,15 @@
     (equal '(1 3))
     (equal '(2 4))))
 
+(define-test ("org.tfeb.hax.collecting" "accumulators")
+  (is = 1 (with-accumulators ((a +)) (a 1)))
+  (is = 1 (with-accumulators ((a + :initially 1))))
+  (is = 1 (with-accumulators ((a + :returner 1+))))
+  (is = 1 (with-accumulators ((a + :by 1)) (a)))
+  (is = 1 (with-accumulators ((a + :default 1)) (a)))
+  (is = 1 (with-accumulators ((a + :default 1)) (a 1)))
+  (is = 1 (with-accumulators ((a + :type fixnum)) (a 1))))
+
 (define-test ("org.tfeb.hax.collecting" "collectors")
   (let ((c (make-collector)))
     (collect-into c 1)
