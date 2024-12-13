@@ -1871,7 +1871,7 @@ It originated as part of a lambda list parser, and betrays that heritage to some
 There arguably should be spread versions of many of these combinators, so if you have a list of predicates you could say, for instance `(all-of* preds)` rather than `(apply #'all-of preds)`.  There might be in future.
 
 ### Package, module, dependencies
-`spam` lives in `org.tfeb.hax.spam` and provides `:org.tfeb.hax.spam`.  It requires `simple-loops` and will attempt to load it if `require-module` is present.
+`spam` lives in `org.tfeb.hax.spam` and provides `:org.tfeb.hax.spam`.  It requires `utilities` and `simple-loops` and will attempt to load them if `require-module` is present.
 
 ## Metatronic macros
 Or, recording angel.  From an idea by Zyni.
@@ -2456,6 +2456,7 @@ Here is what it currently provides.
 - `with-names` binds variables to uninterned symbols with the same name by default: `(with-names (<foo>) ...)`will bind `<foo>` to a fresh uninterned symbol with name `"<FOO>"`.  `(with-names ((<foo> foo)) ...)` will bind `<foo>` to a fresh uninterned symbol with name `"FOO"`.
 - `thunk` makes anonymous functions with no arguments: `(thunk ...)` is `(lambda () ...)`.
 - `thunk*` makes anonymous functions which take an arbitrary number of arguments and ignore them all.
+- `valid-type-specifier-p` attempts to answer the question 'is something a valid type specifier?'.  It does this by asking `subtypep` if it's a subtype of `t`, on the assumption that *any* valid type specifier should be a recognizable subtype of `t`.  There is an optional second argument which is an environment object: using this lets it answer the question for the compilation environment: see [this CLHS issue](https://www.lispworks.com/documentation/HyperSpec/Issues/iss334.htm "Issue `SUBTYPEP-ENVIRONMENT:ADD-ARG` Summary").
 
 ### Package, module
 The utilities live in and provide `:org.tfeb.hax.utilities`.

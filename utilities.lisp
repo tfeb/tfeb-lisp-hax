@@ -8,7 +8,8 @@
    #:parse-simple-body
    #:with-names
    #:thunk
-   #:thunk*))
+   #:thunk*
+   #:valid-type-specifier-p))
 
 (in-package :org.tfeb.hax.utilities)
 
@@ -70,3 +71,13 @@ Optionally you can specify the name by giving a clause as (var <string-designato
        (declare (dynamic-extent ,<args>)
                 (ignore ,<args>))
        ,@body)))
+
+(defun valid-type-specifier-p (thing &optional (environment nil))
+  "Is THING a valid type specifier in ENVIRONMENT?
+
+This works by using SUBTYPEP and catching the error, and therefore
+assumes that any type specifier is a recognizable subtype of T.  If
+that's not true it will perhaps fail.
+
+Yes, having to catch the error is horrible: this is a deficiency of CL."
+ (values (ignore-errors (subtypep thing t environment))))
