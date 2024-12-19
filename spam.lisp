@@ -3,10 +3,11 @@
 
 #+org.tfeb.tools.require-module
 (org.tfeb.tools.require-module:needs
- (:org.tfeb.hax.simple-loops :compile t))
+ (:org.tfeb.hax.simple-loops :compile t)
+ (:org.tfeb.hax.utilities :compile t))
 
 (defpackage :org.tfeb.hax.spam
-  (:use :cl :org.tfeb.hax.simple-loops)
+  (:use :cl :org.tfeb.hax.simple-loops :org.tfeb.hax.utilities)
   (:export
    #:head-matches
    #:list-matches
@@ -191,11 +192,14 @@
               (funcall p e))
             effective-predicates))))
 
+;;; Matching
+;;;
+
 (defun matchp (thing predicate)
   (funcall predicate thing))
 
 (defmacro matching (form &body clauses)
-  (let ((<var> (make-symbol "V")))
+  (with-names (<var>)
     `(let ((,<var> ,form))
        (cond
         ,@(mapcar (lambda (clause)

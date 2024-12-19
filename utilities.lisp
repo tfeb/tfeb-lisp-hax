@@ -9,7 +9,8 @@
    #:with-names
    #:thunk
    #:thunk*
-   #:valid-type-specifier-p))
+   #:valid-type-specifier-p
+   #:canonicalize-declaration-specifier))
 
 (in-package :org.tfeb.hax.utilities)
 
@@ -75,9 +76,45 @@ Optionally you can specify the name by giving a clause as (var <string-designato
 (defun valid-type-specifier-p (thing &optional (environment nil))
   "Is THING a valid type specifier in ENVIRONMENT?
 
-This works by using SUBTYPEP and catching the error, and therefore
-assumes that any type specifier is a recognizable subtype of T.  If
-that's not true it will perhaps fail.
+This works by asking whether TYPEP does not signal an error for it, or
+by an implementation-specific function if I know one.
 
 Yes, having to catch the error is horrible: this is a deficiency of CL."
- (values (ignore-errors (subtypep thing t environment))))
+  #+SBCL
+  (sb-ext:valid-type-specifier-p thing environment)
+  #-(or SBCL)
+  (not (nth-value 1 (ignore-errors (typep nil thing environment)))))
+
+(defun canonicalize-declaration-specifier (declaration &optional (environment nil))
+  "Attempt to canonicalize a declaration specifier
+
+Return two values: the canonical declaration specifier and a 'strictly
+conforming' flag (see below).  If the declaration specifier is
+hopeless an error is signalled.
+
+This will turn declaration specifiers of the form (<type> ...) into
+something of the form (type <type> ...) so long as it can recognise
+<type> as a type.
+
+ENVIRONMENT, if given, is used by VALID-TYPE-SPECIFIER-P and hence
+SUBTYPEP and allows it to know about things which the file compiler
+knows will be type specifiers when the file is loaded.
+
+The second value is true if the declaration specifier is strictly
+conforming.  That means that the identifier must be a symbol, not a
+compound type specifier (see the spec for 'declaration identifier').
+
+In the non-strictly-conforming case of a compound type specifier, the
+type specifier is not checked for validity: it's just assumed to be valid."
+  (etypecase declaration
+    (cons
+      (destructuring-bind (specifier/type . rest) declaration
+       (etypecase specifier/type
+         (symbol
+          (values
+           (if (valid-type-specifier-p specifier/type environment)
+               `(type ,specifier/type ,@rest)
+             declaration)
+           t))
+         (cons
+          (values `(type ,specifier/type ,@rest) nil)))))))

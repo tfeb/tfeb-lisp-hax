@@ -2446,6 +2446,41 @@ Logging to pathnames rather than explicitly-managed streams may be a little slow
 ### Package, module
 `slog` lives in and provides `:org.tfeb.hax.slog`.
 
+## Binding multiple values: `let-values`
+`let-values` provides four forms which let you bind multiple values in a way similar to `let`: you can bind several sets of them in one form.  The main benefit of this is saving indentation.
+
+**`let-values`** is like `let` but for multiple values.  Each clause consists of a list of variables and an initform, rather than a single variable.   The variables are bound to the multiple values returned by the form.  Variables are bound in parallel as for `let`.  The initform may be omitted which is equivalent to it being `nil`.  The equivalent of the 'bare variable' case for `let` is not supported (why would you use `let-values` for this!).
+
+**`let*-values`** is like `let*` but for multiple values.  Each clause is bound within the scope of the previous clauses.
+
+**`let-values*`** is a variant of `let-values` which has the semantics of `multiple-value-call`: Each clause may have a number of initforms, and the variables are bound to the combined values of all of the forms.
+
+**`let*-values*`** is to `let-values*` as `let*-values` is to `let-values`.
+
+Declarations should be handled properly (`(declare (type fixnum ...))` is better than `(declare (fixnum ...))` but both should work).  As an example
+
+```lisp
+(let-values (((a b) (floor 2.4)) ((c d) (floor 8.5)))
+  (declare (integer a c) (single-float b d))
+  (values (+ a b) (+ c d)))
+ -> (multiple-value-bind (#:a #:b)
+        (floor 2.4)
+      (declare (type integer #:a))
+      (declare (type single-float #:b))
+      (multiple-value-bind (#:c #:d)
+          (floor 8.5)
+        (declare (type integer #:c))
+        (declare (type single-float #:d))
+        (let ((a #:a) (b #:b) (c #:c) (d #:d))
+          (declare (integer a c) (single-float b d))
+          (values (+ a b) (+ c d)))))
+```
+
+In the `let*`-style cases the declarations will apply to all duplicate variables.
+
+### Package, module
+`let-values` lives in and provides `:org.tfeb.hax.let-values`.
+
 ## Utilities
 This is used both by other hax and by other code I've written.  Things in this system *may not be stable*: it should be considered mostly-internal.  However, changes to it *are* reflected in the version number of things, since other systems can depend on things in it.
 
@@ -2456,7 +2491,8 @@ Here is what it currently provides.
 - `with-names` binds variables to uninterned symbols with the same name by default: `(with-names (<foo>) ...)`will bind `<foo>` to a fresh uninterned symbol with name `"<FOO>"`.  `(with-names ((<foo> foo)) ...)` will bind `<foo>` to a fresh uninterned symbol with name `"FOO"`.
 - `thunk` makes anonymous functions with no arguments: `(thunk ...)` is `(lambda () ...)`.
 - `thunk*` makes anonymous functions which take an arbitrary number of arguments and ignore them all.
-- `valid-type-specifier-p` attempts to answer the question 'is something a valid type specifier?'.  It does this by asking `subtypep` if it's a subtype of `t`, on the assumption that *any* valid type specifier should be a recognizable subtype of `t`.  There is an optional second argument which is an environment object: using this lets it answer the question for the compilation environment: see [this CLHS issue](https://www.lispworks.com/documentation/HyperSpec/Issues/iss334.htm "Issue `SUBTYPEP-ENVIRONMENT:ADD-ARG` Summary").
+- `valid-type-specifier-p` attempts to answer the question 'is something a valid type specifier?'.  It does this, normally[^22], by asking checking that `(typep nil <thing>)` does not signal an error, which I think is a loophile-free way of answering this question (SBCL, again, says , incorrectly, that`(subtypep <thing> t)`is tue for any `<thing>` thich looks even slightly like a type specifier).  There is an optional second argument which is an environment object handed to `typep`: using this lets it answer the question for the compilation environment: see [this CLHS issue](https://www.lispworks.com/documentation/HyperSpec/Issues/iss334.htm "Issue `SUBTYPEP-ENVIRONMENT:ADD-ARG` Summary").
+- `canonicalize-declaration-specifier` attempts to turn the shorthand `(<type> ...)` declaration specifier into a canonical `(type <type> ...)`.  It does this using `valid-type-specifier-p`.  Its optional second argument is an environent object passed to `valid-type-specifier-p`.  The spec says that a declaration identifier is 'one of the symbols [...](#); *or a symbol which is the name of a type*' [my emphasis].  This means that a declaration specifier like `((integer 0) ...)` is not legal.  Several implementations accept these however, so this function blindly turns such things into type declaration specifiers.  It returns a second value which will be false for one of these, true otherwise.
 
 ### Package, module
 The utilities live in and provide `:org.tfeb.hax.utilities`.
@@ -2508,3 +2544,5 @@ The TFEB.ORG Lisp hax are copyright 1989-2024 Tim Bradshaw.  See `LICENSE` for t
 [^20]:	An interim version of `slog` had a generic function, `log-entry-formatter` which was involved in this process with the aim of being able to select formats more flexibly, but it did not in fact add any useful flexibility.
 
 [^21]:	Well: you could write your own `handler-bind` / `handler-case` forms, but don't do that.
+
+[^22]:	SBCL has its own version of this function, so that's used for SBCL.
