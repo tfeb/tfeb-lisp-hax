@@ -2569,6 +2569,17 @@ Declarations should be handled properly (`(declare (type fixnum ...))` is better
 
 In the `let*`-style cases the declarations will apply to all duplicate variables.
 
+`special` declarations are an interesting case for sequenctial binding forms.  Consider this form:
+
+```lisp
+(let*-values (((a) 1)
+              ((b c) (f)))
+  (declare (special a))
+  ...)
+```
+
+Now, without knowing what `f` does, it could refer to the dynamic binding of `a`.  So the special declaration for `a` needs to be made for the temporary binding as well, unless it is in the final group of bindings.  The starred forms now do this.
+
 ### Package, module
 `let-values` lives in and provides `:org.tfeb.hax.let-values`.
 

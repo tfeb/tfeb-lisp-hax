@@ -34,11 +34,12 @@
 (defun vme-hidden (vme)
   (cdr vme))
 
-(defun mapped-variable-declarations (declarations varmap environment)
+(defun mapped-variable-declarations (declarations varmap environment special-too)
   ;; Appropriate variable declarations from DECLARATIONS mapped
   ;; through VARMAP 'Appropriate' means type declarations and
-  ;; dynamic-extent declarations.  SPECIAL never matters (the hidden
-  ;; variable can be lexical).
+  ;; dynamic-extent declarations.  if SPECIAL-TOO is given also map
+  ;; those (this matters for non-funal groups in sequential binding
+  ;; constructs), since later initforms can refer to the special binding.
   (flet ((mapped-variables (varmap variables)
            (collecting
              (dolist (vme varmap)
@@ -59,7 +60,12 @@
               (dynamic-extent
                (let ((mapped-variables (mapped-variables varmap rest)))
                  (unless (null mapped-variables)
-                   (collect `(declare (,identifier ,@mapped-variables)))))))))))))
+                   (collect `(declare (,identifier ,@mapped-variables))))))
+              (special
+               (when special-too
+                 (let ((mapped-variables (mapped-variables varmap rest)))
+                   (unless (null mapped-variables)
+                     (collect `(declare (special  ,@mapped-variables))))))))))))))
 
 (defun expand-lv (clauses decls/forms starred environment &aux (unique-variables '()))
   (unless (matchp clauses (list-of (some-of (list-matches (list-of (var)) (any))
@@ -86,7 +92,8 @@
           (destructuring-bind (vm . more-vms) vms
             (destructuring-bind (form . more-forms) forms
               `(multiple-value-bind ,(mapcar #'vme-hidden vm) ,form
-                 ,@(mapped-variable-declarations declarations vm environment)
+                 ,@(mapped-variable-declarations declarations vm environment
+                                                 (and starred (not (null more-vms))))
                  ,(if (not (null more-vms))
                       (mvb more-vms more-forms)
                     `(let ,(mapcan (lambda (varmap)
@@ -161,7 +168,7 @@ Declarations should be handled correctly and perhaps usefully."
             (destructuring-bind (this-initforms . more-initforms) initforms
               `(multiple-value-call
                    (lambda ,(mapcar #'vme-hidden vm)
-                     ,@(mapped-variable-declarations declarations vm environment)
+                     ,@(mapped-variable-declarations declarations vm environment nil)
                      ,(if (not (null more-vms))
                           (mvc more-vms more-initforms)
                         `(let ,(mapcan (lambda (varmap)
