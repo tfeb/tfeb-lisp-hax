@@ -119,7 +119,7 @@ Declarations should be handled correctly and perhaps usefully."
 (defmacro let*-values ((&rest clauses) &body decls/forms &environment environment)
   "Multiple-value LET form with sequential binding
 
-LET-VALUES is like LET but each clause binds a list of variables to
+LET-VALUES* is like LET* but each clause binds a list of variables to
 the multiple values of its initform.  Bindings for different clauses
 happen in sequence, as for LET*, so
 
@@ -203,7 +203,7 @@ Declarations should be handled correctly, and perhaps usefully"
 (defmacro let*-values* ((&rest clauses) &body decls/forms &environment environment)
     "Multiple-value LET-like form with sequential binding
 
-Each clause in LET-VALUES* consists of a list of variables to bind and
+Each clause in LET*-VALUES* consists of a list of variables to bind and
 any number of initforms, including zero.  The variables are bound to
 the combined values of all the initforms: this is the same as
 MULTIPLE-VALUE-CALL, which this uses.  Example:
