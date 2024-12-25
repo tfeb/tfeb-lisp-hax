@@ -72,4 +72,5 @@
    (:file "test-slog-run"
     :depends-on ("test-slog-setup"
                  "test-slog-blackbox"
-                 "test-slog-whitebox"))))
+                 "test-slog-whitebox"))
+   (:file "test-let-values")))

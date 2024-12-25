@@ -1,9 +1,9 @@
-;;;; Module org.tfeb.hax.let-values of org.tfeb.hax
+;;;; Module org.tfeb.hax.process-declarations of org.tfeb.hax
 ;;;
 
 (in-package :asdf-user)
 
-(defsystem "org.tfeb.hax.let-values"
+(defsystem "org.tfeb.hax.process-declarations"
   :description
   "A subsystem of the TFEB hax"
   :version
@@ -15,9 +15,6 @@
   :homepage
   "https://github.com/tfeb/tfeb-lisp-hax"
   :depends-on
-  ("org.tfeb.hax.spam"
-   "org.tfeb.hax.collecting"
-   "org.tfeb.hax.iterate"
-   "org.tfeb.hax.utilities")
+  ("org.tfeb.hax.utilities")
   :components
-  ((:file "let-values")))
+  ((:file "process-declarations")))

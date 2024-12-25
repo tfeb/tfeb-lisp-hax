@@ -73,7 +73,7 @@ This repo contains a collection of small Common Lisp hacks I've written over the
 - [Metatronic macros](#metatronic-macros)
 	- [Notes](#notes-5)
 	- [Writing more complicated macros](#writing-more-complicated-macros)
-	- [Package, module](#package-module-13)
+	- [Package, module, dependencies](#package-module-dependencies-4)
 - [Simple logging: slog](#simple-logging-slog)
 	- [Almost a simple example](#almost-a-simple-example)
 	- [Log entries](#log-entries)
@@ -86,11 +86,17 @@ This repo contains a collection of small Common Lisp hacks I've written over the
 	- [Precision time](#precision-time)
 	- [An example: rotating log files](#an-example-rotating-log-files)
 	- [Notes](#notes-6)
-	- [Package, module](#package-module-14)
+	- [Package, module, dependencies](#package-module-dependencies-5)
 - [Binding multiple values: let-values](#binding-multiple-values-let-values)
-	- [Package, module](#package-module-15)
-- [Utilities](#utilities)
-	- [Package, module](#package-module-16)
+	- [Package, module, dependencies](#package-module-dependencies-6)
+- [Processing declaration specifiers: process-declarations](#processing-declaration-specifiers-process-declarations)
+	- [Terminology](#terminology)
+	- [What you can do](#what-you-can-do)
+	- [The interface](#the-interface-3)
+	- [Examples](#examples-1)
+	- [Package, module, dependencies](#package-module-dependencies-7)
+- [Small utilities: utilities](#small-utilities-utilities)
+	- [Package, module](#package-module-13)
 
 ## General
 ### Modules
@@ -2098,8 +2104,8 @@ for instance.  Here `values` is just suppressing the other values from `metatron
 
 However in general metatronic macros are far more useful for simple macros where there is no complicated expander function like this: that's what it was intended for.
 
-### Package, module
-`metatronic` lives in and provides `:org.tfeb.hax.metatronic`.
+### Package, module, dependencies
+`metatronic` lives in and provides `:org.tfeb.hax.metatronic`.  It requires `utilities` and will attempt to load it if `require-module` is present.
 
 ## Simple logging: `slog`
 `slog` is based on an two observations about the Common Lisp condition system:
@@ -2534,8 +2540,8 @@ I'm not completely convinced by the precision time code.
 
 Logging to pathnames rather than explicitly-managed streams may be a little slower, but seems now to be pretty close.
 
-### Package, module
-`slog` lives in and provides `:org.tfeb.hax.slog`.
+### Package, module, dependencies
+`slog` lives in and provides `:org.tfeb.hax.slog`. It requires `utilities`, `collecting`, `spam` and `metatronic`and will attempt to load them if `require-module` is present.
 
 ## Binding multiple values: `let-values`
 `let-values` provides four forms which let you bind multiple values in a way similar to `let`: you can bind several sets of them in one form.  The main benefit of this is saving indentation.
@@ -2580,10 +2586,120 @@ In the `let*`-style cases the declarations will apply to all duplicate variables
 
 Now, without knowing what `f` does, it could refer to the dynamic binding of `a`.  So the special declaration for `a` needs to be made for the temporary binding as well, unless it is in the final group of bindings.  The starred forms now do this.
 
-### Package, module
-`let-values` lives in and provides `:org.tfeb.hax.let-values`.
+### Package, module, dependencies
+`let-values` lives in and provides `:org.tfeb.hax.let-values`.  It requires `spam`, `collecting`, `iterate` and `utilities`, and will attempt to load them if `require-module` is present.
 
-## Utilities
+## Processing declaration specifiers: `process-declarations`
+When writing macros it's useful to be able to process declaration specifiers in a standardised way.  In particular it's common to want to select all specifiers which mention a variable and perhaps create equivalent ones which refer to some new variable introduced by the macro.
+
+Things in this system are *probably not stable*.  I want to publish it so other things can rely on it, but its details may change.
+
+### Terminology
+A `declare` expression[^22] is of the form `(declare <declaration-specifier> ...)`, where a `<declaration-specifier>` is of the form `(<declaration-identifier> ...)`.  A `<declaration-identifier>` is a symbol, which may be the name of a type[^23]: `(<type> ...)` is a shorthand for the canonical `(type <type> ...)`.  There are a number of standard identifiers, and nonstandard ones can be portably declared as valid identifiers.  This terminology is the same as that used in the standard.
+
+### What you can do
+`process-declaration-specifier` lets you call a function on a processed declaration specifier, with the function being handed information which tells it the identifier (canonicalised in the case of type declarations), which variable and function names it applies to if any, and a function which will construct a similar specifier for possibly-different sets of variable or function names or other information.  Other information can be handed to the function.
+
+Methods on `process-declaration-identifier` allow you to define handlers for declaration identifiers which describe how the function should be called.  Suitable methods exist for all standard declaration identifiers, so for normal usage you will never need to write methods on this generic function.
+
+### The interface
+**`process-declaration-specifier`**  calls a function on a processed declaration specifier.  It takes two positional arguments and any number of keyword arguments.  Positional arguments are:
+
+- the declaration specifier
+- the function to call on the processed specifier
+
+The only keyword argument used by the function itself is `environment`, which specifies an optional environment object.  This can be used to infer things about types at compile time.  All keyword arguments, including `environment` are passed to the function being called.
+
+The given function is called with two positional arguments and a number of keyword arguments, including all those given to `process-declaration-specifier` itself.  Positional arguments are
+
+- the canonical declaration identifier, which for a declaration specifier like `(fixnum ...)` will be `type`.
+- a function which will construct a suitable declaration specifier of the same kind as the one being processed.
+
+All other arguments to the given function are keyword arguments and they will always include
+
+- `variable-names`, a list of variable names for this specifier, if any;
+- `function-names`, a list of function names for this specifier, if any;
+- `specifier`, the canonical version of the whole specifier;
+- `original-specifier`, the original specifier, which may differ for shorthand type specifiers;
+- `specifier-body`, the cdr of `specifier`;
+- `environment`, the environment, or `nil`
+
+In addition any keyword arguments passed to `process-declaration-specifier` are passed to the function.
+
+The above keyword arguments are all the arguments passed to functions for standard declaration identifiers.  Non-standard ones may pass additional arguments, based on methods on `process-declaration-identifier`.
+
+The second argument to the function is itself a function, whose job is to construct a declaration specifier of the same kind as the one being processed, but usually for other arguments.  This function again takes zero or more keyword arguments: which arguments it accepts depend on the declaration identifier.  For the standard identifiers here are the arguments.
+
+- `type`: `variable-names`, a list of variable names.
+- `ftype`: `function-names`, a list of function names.
+- `special` and `dynamic-extent`: `variable-names`, a list of variable names.
+- `inline` and `notinline`: `function-names`, a list of function names.
+- `ignore` and `ignorable`: both `variable-names` and `function-names` are allowed.
+- All other standard declaration identifiers have constructor functions which take no arguments and simply return the canonical specifier.
+
+Constructor functions are fussy about their arguments: they *don't* allow unknown keyword arguments.  This means you get an error rather than silently get the wrong anser.
+
+`process-declaration-specifier` returns what the function called returns.
+
+**`process-declaration-identifier`** is a generic function used to implement `process-declaration-specifier` for specific declaration identifiers.  *Unless you want to support non-standard identifiers, you do not need to implement methods on this function*.  You should not implement methods for any standard identifiers, or a fallback method, as these already exist.
+
+The generic function is called with two positional arguments and any number of keyword arguments (the GF itself has `&allow-other-keys` so methods don't need to say this themselves).  The positional arguments are:
+
+- the declaration identifier, which shoul be used for dispatch;
+- the function handed to `process-declaration-specifier`.
+
+Keyword arguments include all those specified above, as well as any user-provided arguments to `process-declaration-specifier`.  Note that the values of all the keyword arguments are the default ones, so for instance `variable-names` will be `()`: methods are responsible for providing non-default values where needed.  Note that CL's keyword-argument parsing, which  allows repeated keywords and takes the value of the leftmost one, makes this easy.
+
+Methods on the generic function are responsible for arranging for the user function to be called in the right way, and in particular with an appropriate constructor function.
+
+Methods should return the values of the user function.
+
+### Examples
+All the above sounds pretty obscure, but it's much easier to use than it seems.  Here is a typical case: I want to create equivalent `type` declarations for 'hidden' variables corresponding to a number of variables in a macro.  Here is a function which will do this, using `collecting` for result accumulation.
+
+```lisp
+(defun type-declarations-for-varmap (decls varmap environment)
+  ;; DECLS is the declarations, VARMAP the alist from (var .
+  ;; secret-var) and ENVIRONMENT the macro environment or NIL
+  `(declare
+    ,@(collecting
+        (dolist (decl decls)
+          (dolist (specifier (rest decl))
+            (process-declaration-specifier
+             specifier
+             (lambda (identifier constructor &key variable-names &allow-other-keys)
+               (case identifier
+                 (type                      ;only care about these
+                  (let ((mapped-variables
+                         (collecting
+                           (dolist (v variable-names)
+                             (let ((found (assoc v varmap)))
+                               ;; only care if there is a mapped variable
+                               (when found (collect (cdr found))))))))
+                    (collect (funcall constructor :variable-names mapped-variables))))))
+             :environment environment))))))
+```
+
+And now
+
+```lisp
+> (type-declarations-for-varmap
+   '((declare (optimize speed))
+     (declare (ignorable a b)
+              (fixnum a)
+              (type float b c)))
+   '((a . secret-a)
+     (b . secret-b))
+   nil)
+(declare (type fixnum secret-a) (type float secret-b))
+```
+
+It is generally never necessary to write methods on `process-declaration-identifier`: if you need to you should look at the source to see what they look like.
+
+### Package, module, dependencies
+`process-declarations` lives in and provides `:org.tfeb.hax.process-declarations`.  It needs `utilities` and will attempt to load it if `require-module` is present.
+
+## Small utilities: `utilities`
 This is used both by other hax and by other code I've written.  Things in this system *may not be stable*: it should be considered mostly-internal.  However, changes to it *are* reflected in the version number of things, since other systems can depend on things in it.
 
 Here is what it currently provides.
@@ -2593,7 +2709,7 @@ Here is what it currently provides.
 - `with-names` binds variables to uninterned symbols with the same name by default: `(with-names (<foo>) ...)`will bind `<foo>` to a fresh uninterned symbol with name `"<FOO>"`.  `(with-names ((<foo> foo)) ...)` will bind `<foo>` to a fresh uninterned symbol with name `"FOO"`.
 - `thunk` makes anonymous functions with no arguments: `(thunk ...)` is `(lambda () ...)`.
 - `thunk*` makes anonymous functions which take an arbitrary number of arguments and ignore them all.
-- `valid-type-specifier-p` attempts to answer the question 'is something a valid type specifier?'.  It does this, normally[^22], by checking that `(typep nil <thing>)` does not signal an error, which I think is a loophole-free way of answering this question (SBCL, again, says incorrectly that`(subtypep <thing> t)`is true for any `<thing>` which looks even slightly like a type specifier).  There is an optional second argument which is an environment object handed to `typep`: using this lets it answer the question for the compilation environment: see [this CLHS issue](https://www.lispworks.com/documentation/HyperSpec/Issues/iss334.htm "Issue `SUBTYPEP-ENVIRONMENT:ADD-ARG` Summary").
+- `valid-type-specifier-p` attempts to answer the question 'is something a valid type specifier?'.  It does this, normally[^24], by checking that `(typep nil <thing>)` does not signal an error, which I think is a loophole-free way of answering this question (SBCL, again, says incorrectly that`(subtypep <thing> t)`is true for any `<thing>` which looks even slightly like a type specifier).  There is an optional second argument which is an environment object handed to `typep`: using this lets it answer the question for the compilation environment: see [this CLHS issue](https://www.lispworks.com/documentation/HyperSpec/Issues/iss334.htm "Issue `SUBTYPEP-ENVIRONMENT:ADD-ARG` Summary").
 - `canonicalize-declaration-specifier` attempts to turn the shorthand `(<type> ...)` declaration specifier into a canonical `(type <type> ...)`.  It does this using `valid-type-specifier-p`.  Its optional second argument is an environent object passed to `valid-type-specifier-p`.  The spec says that a declaration identifier is 'one of the symbols [...]; *or a symbol which is the name of a type*' [my emphasis.  This means that a declaration specifier like `((integer 0) ...)` is not legal.  Several implementations accept these however, so this function blindly turns such things into type declaration specifiers.  It returns a second value which will be false for one of these, true otherwise.
 
 ### Package, module
@@ -2647,4 +2763,8 @@ The TFEB.ORG Lisp hax are copyright 1989-2024 Tim Bradshaw.  See `LICENSE` for t
 
 [^21]:	Well: you could write your own `handler-bind` / `handler-case` forms, but don't do that.
 
-[^22]:	SBCL has its own version of this function, so that's used for SBCL.
+[^22]:	All of this applies to `proclaim` and `declaim` as well.
+
+[^23]:	Some implementations allow non-atomic type specifiers: this is not strictly conforming but supported by this code.
+
+[^24]:	SBCL has its own version of this function, so that's used for SBCL.
