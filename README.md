@@ -2600,6 +2600,8 @@ A `declare` expression[^22] is of the form `(declare <declaration-specifier> ...
 ### What you can do
 `process-declaration-specifier` lets you call a function on a processed declaration specifier, with the function being handed information which tells it the identifier (canonicalised in the case of type declarations), which variable and function names it applies to if any, and a function which will construct a similar specifier for possibly-different sets of variable or function names or other information.  Other information can be handed to the function.
 
+`processing-declaration-specifier` is a slightly restricted macro version of `process-declaration-specifier`.
+
 Methods on `process-declaration-identifier` allow you to define handlers for declaration identifiers which describe how the function should be called.  Suitable methods exist for all standard declaration identifiers, so for normal usage you will never need to write methods on this generic function.
 
 ### The interface
@@ -2641,6 +2643,27 @@ Constructor functions are fussy about their arguments: they *don't* allow unknow
 
 `process-declaration-specifier` returns what the function called returns.
 
+**`processing-declaration-specifier`** is a slightly restruicted macro version of `process-declaration-specifier`.  It is probably unstable.  The syntax of this form is
+
+```lisp
+(processing-declaration-specifier (<specifier>
+                                   &key
+                                   identifier
+                                   constructor
+                                   bindings
+                                   environment)
+  <body> ...)
+```
+
+Here `<specifier>` is the specifier to process, and `<body>` is the code.  The keyword arguments let you say which variables you want to bind:
+
+- `identifier` is a variable which will be bound to the identifier of the specifier;
+- `constructor`, if given, names a local function which will construct a new specifier, wrapping the second argument to the function called by `process-declaration-specifier`;
+- `bindings` if given is a number of keyword-argument specifiers, as for the function called by `process-declaration-specifier`;
+- `environment`, if given, is an environment object.
+
+See below for how this macro can be used.
+
 **`process-declaration-identifier`** is a generic function used to implement `process-declaration-specifier` for specific declaration identifiers.  *Unless you want to support non-standard identifiers, you do not need to implement methods on this function*.  You should not implement methods for any standard identifiers, or a fallback method, as these already exist.
 
 The generic function is called with two positional arguments and any number of keyword arguments (the GF itself has `&allow-other-keys` so methods don't need to say this themselves).  The positional arguments are:
@@ -2680,7 +2703,33 @@ All the above sounds pretty obscure, but it's much easier to use than it seems. 
              :environment environment))))))
 ```
 
-And now
+Or, using `processing-declaration-specifier`:
+
+```lisp
+(defun type-declarations-for-varmap (decls varmap environment)
+  ;; DECLS is the declarations, VARMAP the alist from (var .
+  ;; secret-var) and ENVIRONMENT the macro environment or NIL
+  `(declare
+    ,@(collecting
+        (dolist (decl decls)
+          (dolist (specifier (rest decl))
+            (processing-declaration-specifier (specifier
+                                               :identifier identifier
+                                               :constructor maker
+                                               :bindings ((variable-names '()))
+                                               :environment environment)
+              (case identifier
+                (type                      ;only care about these
+                 (let ((mapped-variables
+                        (collecting
+                          (dolist (v variable-names)
+                            (let ((found (assoc v varmap)))
+                              ;; only care if there is a mapped variable
+                              (when found (collect (cdr found))))))))
+                   (collect (maker :variable-names mapped-variables)))))))))))
+```
+
+And now, for either version:
 
 ```lisp
 > (type-declarations-for-varmap

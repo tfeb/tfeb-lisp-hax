@@ -20,7 +20,8 @@
   (:use :org.tfeb.hax.utilities)
   (:export
    #:process-declaration-identifier
-   #:process-declaration-specifier))
+   #:process-declaration-specifier
+   #:processing-declaration-specifier))
 
 (in-package :org.tfeb.hax.process-declarations)
 
@@ -100,6 +101,54 @@ The return values of this function are the return values of F."
            :specifier-body (rest canonical)
            :environment environment
            args)))
+
+(defmacro processing-declaration-specifier ((specifier &key
+                                                       (identifier nil)
+                                                       (constructor nil)
+                                                       (bindings '())
+                                                       (environment '()))
+                                            &body decls/forms)
+  ;; May be?  This is less powerful than
+  ;; PROCESS-DECLARATION-SPECIFIER, but fine.  It's easier just repeat
+  ;; the expansion here like this than splice together something, or I
+  ;; thought so.
+  (with-names (<constructor>)
+    (multiple-value-bind (decls forms) (parse-simple-body decls/forms)
+      (if identifier
+          (if constructor
+              `(process-declaration-specifier
+                ,specifier
+                (lambda (,identifier ,<constructor> &key ,@bindings &allow-other-keys)
+                  ,@decls
+                  (flet ((,constructor (&rest args-to-constructor &key &allow-other-keys)
+                           (apply ,<constructor> args-to-constructor)))
+                    ,@forms))
+                :environment ,environment)
+            `(process-declaration-specifier
+                ,specifier
+                (lambda (,identifier ,<constructor> &key ,@bindings &allow-other-keys)
+                  ,@decls
+                  (declare (ignore ,<constructor>))
+                  ,@forms)
+                :environment ,environment))
+        (with-names (<identifier>)
+          (if constructor
+              `(process-declaration-specifier
+                ,specifier
+                (lambda (,<identifier> ,<constructor> &key ,@bindings &allow-other-keys)
+                  ,@decls
+                  (declare (ignore ,<identifier>))
+                  (flet ((,constructor (&rest args-to-constructor &key &allow-other-keys)
+                           (apply ,<constructor> args-to-constructor)))
+                    ,@forms))
+                :environment ,environment)
+            `(process-declaration-specifier
+                ,specifier
+                (lambda (,<identifier> ,<constructor> &key ,@bindings &allow-other-keys)
+                  ,@decls
+                  (declare (ignore ,<identifier> ,<constructor>))
+                  ,@forms)
+                :environment ,environment)))))))
 
 (defmethod process-declaration-identifier ((identifier t) function
                                            &rest args &key
