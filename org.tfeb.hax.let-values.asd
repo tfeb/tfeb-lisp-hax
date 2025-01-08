@@ -18,6 +18,7 @@
   ("org.tfeb.hax.spam"
    "org.tfeb.hax.collecting"
    "org.tfeb.hax.iterate"
-   "org.tfeb.hax.utilities")
+   "org.tfeb.hax.utilities"
+   "org.tfeb.hax.process-declarations")
   :components
   ((:file "let-values")))

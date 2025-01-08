@@ -2575,7 +2575,7 @@ Declarations should be handled properly (`(declare (type fixnum ...))` is better
 
 In the `let*`-style cases the declarations will apply to all duplicate variables.
 
-`special` declarations are an interesting case for sequenctial binding forms.  Consider this form:
+`special` declarations are an interesting case for sequential binding forms.  Consider this form:
 
 ```lisp
 (let*-values (((a) 1)
@@ -2587,7 +2587,7 @@ In the `let*`-style cases the declarations will apply to all duplicate variables
 Now, without knowing what `f` does, it could refer to the dynamic binding of `a`.  So the special declaration for `a` needs to be made for the temporary binding as well, unless it is in the final group of bindings.  The starred forms now do this.
 
 ### Package, module, dependencies
-`let-values` lives in and provides `:org.tfeb.hax.let-values`.  It requires `spam`, `collecting`, `iterate` and `utilities`, and will attempt to load them if `require-module` is present.
+`let-values` lives in and provides `:org.tfeb.hax.let-values`.  It requires `spam`, `collecting`, `iterate` `utilities` and `process-declarations`,  and will attempt to load them if `require-module` is present.
 
 ## Processing declaration specifiers: `process-declarations`
 When writing macros it's useful to be able to process declaration specifiers in a standardised way.  In particular it's common to want to select all specifiers which mention a variable and perhaps create equivalent ones which refer to some new variable introduced by the macro.

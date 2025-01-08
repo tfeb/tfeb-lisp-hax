@@ -40,6 +40,11 @@
    (:file "slog"
     :depends-on ("simple-loops" "collecting" "spam"
                  "metatronic"))
+   (:file "let-values"
+    :depends-on ("spam" "collecting" "iterate"
+                 "utilities" "process-declarations"))
+   (:file "process-declarations"
+    :depends-on ("utilities"))
    (:file "hax-cometh"
     :depends-on ("collecting" "wrapping-standard"
                  "iterate" "dynamic-state" "memoize"
@@ -48,7 +53,8 @@
                  "define-functions" "trace-macroexpand"
                  "binding" "stringtable" "object-accessors"
                  "utilities" "simple-loops" "spam"
-                 "metatronic" "slog"))))
+                 "metatronic" "slog" "let-values"
+                 "process-declarations"))))
 
 (defsystem "org.tfeb.hax/test"
   :description "TFEB hax tests"
