@@ -112,9 +112,17 @@ type specifier is not checked for validity: it's just assumed to be valid."
        (etypecase specifier/type
          (symbol
           (values
-           (if (valid-type-specifier-p specifier/type environment)
+           (case specifier/type
+             ;; Catching these explicitly reduces the chance of a
+             ;; calls to VALID-TYPE-SPECIFIER-P which means SBCL
+             ;; generates fewer spurous compile-time warnings.
+             ((declaration dynamic-extent ftype function ignore ignorable
+                           inline notinline optimize special type)
+              declaration)
+             (otherwise
+              (if (valid-type-specifier-p specifier/type environment)
                `(type ,specifier/type ,@rest)
-             declaration)
+               declaration)))
            t))
          (cons
           (values `(type ,specifier/type ,@rest) nil)))))))
