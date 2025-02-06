@@ -29,18 +29,31 @@ Return two values: a list of declarations and a list of forms"
     (push this slced)))
 
 (defun parse-docstring-body (doc/decls/forms)
-  "Parse a body that may have a docstring at the start
+  "Parse a body that may have a docstring and declarations at the start
 
 Return three values: the docstring, or NIL, a list of declarations and
 a list of forms."
-  (if (and (stringp (first doc/decls/forms))
-           (not (null (rest doc/decls/forms))))
-      (multiple-value-bind (decls forms)
-          (parse-simple-body (rest doc/decls/forms))
-        (values (first doc/decls/forms) decls forms))
-      (multiple-value-bind (decls forms)
-          (parse-simple-body doc/decls/forms)
-        (values nil decls forms))))
+  ;; Note a docstring may be intertwined with declarations: the
+  ;; previous version of this got that wrong.
+  (labels ((grovel (tail docstring scled)
+             (if (null tail)
+                 (values docstring (nreverse scled) tail)
+               (destructuring-bind (this . more) tail
+                 (cond
+                  ((and (not docstring) (stringp this) (not (null more)))
+                   (grovel more this scled))
+                  ((stringp this)
+                   ;; Sanity check for extra declarations
+                   (let ((next (first more)))
+                     (when (and (consp next)
+                                (eq (car next) 'declare))
+                       (warn "unexpected declare after end of preamble")))
+                   (values docstring (nreverse scled) tail))
+                  ((and (consp this) (eq (first this) 'declare))
+                   (grovel more docstring (cons this scled)))
+                  (t
+                   (values docstring (nreverse scled) tail)))))))
+    (grovel doc/decls/forms nil '())))
 
 (defmacro with-names ((&rest clauses) &body forms)
   "Bind a bunch of variables to fresh symbols with the same name
