@@ -1707,8 +1707,46 @@ As with `with-accessors` you can provide names which are different than the acce
 
 There is absolutely nothing special about `with-object-accessors`: it's just the obvious thing you would write using `symbol-macrolet`.  Its only reason to exist is so that it *does* exist: versions of it no longer have to be endlessly rewritten.  It is careful to evaluate the object only once, so `(with-object-accessors (car cdr) (cons 1 2) ...)` would work, say.
 
+Additionally, `object-accessors` now provides a macro for named access to array elements.  This is `with-named-array-references`.  It has independent origin from `with-object-accessors` and takes its arguments in the opposite order.  That's slightly unfortunate.  Its syntax is
+
+```lisp
+(with-named-array-references (<array> [<type>]) ((<name> <index> ...) ...)
+  ...)
+```
+
+The type declaration applies to the binding established for the array.  As an example:
+
+```lisp
+(with-named-array-references (state (array double-float (*))) ((x 0) (y 1) (vx 2) (vy 3))
+  (incf x vx)
+  (incf y vy)
+  state)
+```
+
+will update some 2d state-vector for an object.
+
+Note that the indices are not cached by this macro.  If you have a vector representing lots of object states you might want to define something like:
+
+```lisp
+(defmacro with-state-slots-at ((v n) &body decls/forms)
+  ;; Named access to the state at n in the state vector
+  (with-names (<xi> <yi> <vxi> <vyi>)
+    `(let* ((,<xi> (* ,n 4))
+            (,<yi> (+ ,<xi> 1))
+            (,<vxi> (+ ,<yi> 1))
+            (,<vyi> (+ ,<vxi> 1)))
+       (declare (type array-index ,<xi> ,<yi> ,<vxi> ,<vyi>)
+                (ignorable ,<xi> ,<yi> ,<vxi> ,<vyi>))
+       (with-named-array-references (,v state-vector) ((x ,<xi>) (y ,<yi>)
+                                                       (vx ,<vxi>) (vy ,<vyi>))
+         (declare (ignorable x y vx vy))
+         ,@decls/forms))))
+```
+
+This avoids recomputing the indices each time.
+
 ### Package, module
-`object-accessors` lives in `org.tfeb.hax.object-accessors` and provides `:org.tfeb.hax.object-accessors`.
+`object-accessors` depends on `utilities`, lives in `org.tfeb.hax.object-accessors` and provides `:org.tfeb.hax.object-accessors`.
 
 ## Decomposing iteration: `simple-loops`
 Like a lot of people I have mixed feelings about `loop`.  For a long time I thought that, well, if I wasn't going to use `loop`, I'd need some other elaborate iteration system, although perhaps one which was more principled and extensible such as Richard C Waters' [Series](https://github.com/tfeb/series "Series")[^14].  And I am sure the CL community has invented other tools while I've not been watching.

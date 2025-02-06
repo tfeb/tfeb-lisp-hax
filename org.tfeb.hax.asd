@@ -28,7 +28,8 @@
     :depends-on ("collecting" "iterate"))
    (:file "stringtable"
     :depends-on ("collecting" "iterate"))
-   (:file "object-accessors")
+   (:file "object-accessors"
+    :depends-on ("utilities"))
    (:file "utilities"
     :depends-on ("collecting" "iterate"))
    (:file "simple-loops"
@@ -65,7 +66,8 @@
   :depends-on ("org.tfeb.hax" "parachute")
   :pathname "test/"
   :components
-  ((:file "test-binding")
+  ((:file "test-utilities")
+   (:file "test-binding")
    (:file "test-iterate")
    (:file "test-collecting")
    (:file "test-simple-loops")

@@ -14,5 +14,7 @@
   "MIT"
   :homepage
   "https://github.com/tfeb/tfeb-lisp-hax"
+  :depends-on
+  "utilities"
   :components
   ((:file "object-accessors")))
