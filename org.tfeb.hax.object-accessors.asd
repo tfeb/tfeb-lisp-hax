@@ -15,6 +15,6 @@
   :homepage
   "https://github.com/tfeb/tfeb-lisp-hax"
   :depends-on
-  "utilities"
+  ("org.tfeb.hax.utilities")
   :components
   ((:file "object-accessors")))
