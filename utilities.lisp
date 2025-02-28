@@ -7,6 +7,7 @@
    #:parse-docstring-body
    #:parse-simple-body
    #:with-names
+   #:symbolify
    #:thunk
    #:thunk*
    #:valid-type-specifier-p
@@ -54,6 +55,19 @@ a list of forms."
                   (t
                    (values docstring (nreverse scled) tail)))))))
     (grovel doc/decls/forms nil '())))
+
+(defun symbolify (where &rest things)
+  "Make a symbol from string representations of THINGS, interning it if WHERE is given
+
+The argument order is slightly odd, but it makes sense since you want
+to be able to provide as many arguments as you need."
+  (declare (dynamic-extent things))
+  (if where
+      (intern (apply #'concatenate 'string
+                     (mapcar #'string things))
+              (if (eq where t) *package* where))
+      (make-symbol (apply #'concatenate 'string
+                          (mapcar #'string things)))))
 
 (defmacro with-names ((&rest clauses) &body forms)
   "Bind a bunch of variables to fresh symbols with the same name

@@ -2791,8 +2791,9 @@ This is used both by other hax and by other code I've written.  Things in this s
 
 Here is what it currently provides.
 
-- `parse-docstring-body` parses the body of a function with possible documentation and declarations into three values: docstring, list of declarations and remaining forms.
+- `parse-docstring-body` parses the body of a function with possible documentation and declarations into three values: docstring, list of declarations and remaining forms.  With luck it now dies this correctly (the docstring and declarations can be intermingled).
 - `parse-simple-body` is like `parse-docstring-body` but it does not handle docstrings & only returns two values.
+- `symbolify` makes symbols by concatenating string designators, and optionally interns them.  If its first argument is a package designator it will intern the result of concatenating the remaining string designators in that package.  If it is `nil` it will return an uninterned symbol.  This is a slightly odd argument convention but I can't think of a better one.  Example: if `s` is the symbol `foo` then `(symbolify nil s "-P")` will return an uninterned symbol whose name is `FOO-P`.
 - `with-names` binds variables to uninterned symbols with the same name by default: `(with-names (<foo>) ...)`will bind `<foo>` to a fresh uninterned symbol with name `"<FOO>"`.  `(with-names ((<foo> foo)) ...)` will bind `<foo>` to a fresh uninterned symbol with name `"FOO"`.
 - `thunk` makes anonymous functions with no arguments: `(thunk ...)` is `(lambda () ...)`.
 - `thunk*` makes anonymous functions which take an arbitrary number of arguments and ignore them all.
