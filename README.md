@@ -2584,13 +2584,22 @@ Logging to pathnames rather than explicitly-managed streams may be a little slow
 ## Binding multiple values: `let-values`
 `let-values` provides four forms which let you bind multiple values in a way similar to `let`: you can bind several sets of them in one form.  The main benefit of this is saving indentation.
 
-**`let-values`** is like `let` but for multiple values.  Each clause consists of a list of variables and an initform, rather than a single variable.   The variables are bound to the multiple values returned by the form.  Variables are bound in parallel as for `let`.  The initform may be omitted which is equivalent to it being `nil`.  The equivalent of the 'bare variable' case for `let` is not supported (why would you use `let-values` for this!).
+**`let-values`** is like `let` but for multiple values.  Each clause consists of a list of variables and an initform, rather than a single variable.   The variables are bound to the multiple values returned by the form.  Variables are bound in parallel as for `let`.  The initform may be omitted which is equivalent to it being `nil`.  Each binding clause may be
+
+| clause                | equivalent to    |
+| --------------------- | ---------------- |
+| `((var ...) [form]))` |                  |
+| `(var [form])`        | `((var) [form])` |
+| `var`                 | `((var))`        |
+[Forms of possible clause]
 
 **`let*-values`** is like `let*` but for multiple values.  Each clause is bound within the scope of the previous clauses.
 
 **`let-values*`** is a variant of `let-values` which has the semantics of `multiple-value-call`: Each clause may have a number of initforms, and the variables are bound to the combined values of all of the forms.
 
 **`let*-values*`** is to `let-values*` as `let*-values` is to `let-values`.
+
+Both `let-values*` and `let*-values*` are fussy about the number of values, because `multiple-value-call` is: `(let-values* (((a))) ...)` is an error, as is `(let-values (((a) 1 2)) ...)`.
 
 Declarations should be handled properly (`(declare (type fixnum ...))` is better than `(declare (fixnum ...))` but both should work).  As an example
 
@@ -2793,7 +2802,7 @@ Here is what it currently provides.
 
 - `parse-docstring-body` parses the body of a function with possible documentation and declarations into three values: docstring, list of declarations and remaining forms.  With luck it now dies this correctly (the docstring and declarations can be intermingled).
 - `parse-simple-body` is like `parse-docstring-body` but it does not handle docstrings & only returns two values.
-- `symbolify` makes symbols by concatenating string designators, and optionally interns them.  If its first argument is a package designator it will intern the result of concatenating the remaining string designators in that package.  If it is `nil` it will return an uninterned symbol.  This is a slightly odd argument convention but I can't think of a better one.  Example: if `s` is the symbol `foo` then `(symbolify nil s "-P")` will return an uninterned symbol whose name is `FOO-P`.
+- `symbolify` makes symbols by concatenating string designators, and optionally interns them.  If its first argument is a package designator, or `t` meaning the value of `*package*`, it will intern the result of concatenating the remaining string designators in that package.  If it is `nil` it will return an uninterned symbol.  This is a slightly odd argument convention but I can't think of a better one.  Example: if `s` is the symbol `foo` then `(symbolify nil s "-P")` will return an uninterned symbol whose name is `FOO-P`.
 - `with-names` binds variables to uninterned symbols with the same name by default: `(with-names (<foo>) ...)`will bind `<foo>` to a fresh uninterned symbol with name `"<FOO>"`.  `(with-names ((<foo> foo)) ...)` will bind `<foo>` to a fresh uninterned symbol with name `"FOO"`.
 - `thunk` makes anonymous functions with no arguments: `(thunk ...)` is `(lambda () ...)`.
 - `thunk*` makes anonymous functions which take an arbitrary number of arguments and ignore them all.

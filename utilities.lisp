@@ -59,6 +59,9 @@ a list of forms."
 (defun symbolify (where &rest things)
   "Make a symbol from string representations of THINGS, interning it if WHERE is given
 
+WHERE can be: NIL meaning don't intern, T meaning to intern in
+*PACKAGE*, or a package designator.
+
 The argument order is slightly odd, but it makes sense since you want
 to be able to provide as many arguments as you need."
   (declare (dynamic-extent things))
