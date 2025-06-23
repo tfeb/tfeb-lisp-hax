@@ -403,6 +403,10 @@ is equivalent to
 
 except that no new list structure is created.  See `collector-contents` for a function which does not update the tail pointer.
 
+**`collector-empty-p`** returns true if its argument is a collector which is empty (note it doesn't perform any check that the argument actually is a valid collector object).
+
+**`pop-collector`** returns the first element of a collector, and alters it so that the second element is now the first element.  It can be used to use collectors like queues.
+
 ### Notes on explicit collectors
 Surprising things can happen if you share a single list between more than one collector without copying it:
 

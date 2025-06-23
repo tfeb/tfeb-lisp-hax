@@ -38,7 +38,9 @@
           #:collector-contents
           #:collect-into
           #:nconc-collectors
-          #:nconc-collector-onto))
+          #:nconc-collector-onto
+          #:pop-collector
+          #:collector-empty-p))
 
 (in-package :org.tfeb.hax.collecting)
 
@@ -305,14 +307,13 @@ This is the closest equivalent to Interlisp's TCONC."
   ;; Note unlike APPEND it makes no sense to call this with no
   ;; collectors at all: what should it return in that case (perhaps a
   ;; new collector)?
-  (declare (dynamic-extent collectors))
-
   "Destructively concatenate one or more collectors, returning the first
 
 All the collectors share a tail pointer after this is done, while
 their head pointers point at appropriate points on the NCONCed list.
 You can then collect more into any one of them but this will make the tail
 pointers of all the others junk."
+  (declare (dynamic-extent collectors))
   (if (null collectors)
       collector
     (labels ((ncc (c a more)
@@ -341,3 +342,15 @@ Return the collector."
     (setf (cdr (cdr collector)) onto
           (cdr collector) (last onto)))
   collector)
+
+(defun pop-collector (c)
+  "Pop the first value from C
+
+If C is empty, then this will return NI"L
+  (prog1 (pop (car c))
+    (when (null (car c))
+      (setf (cdr c) nil))))
+
+(defun collector-empty-p (c)
+  "Return true if the collector C is empty"
+  (null (car c)))
