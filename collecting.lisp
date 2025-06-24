@@ -346,7 +346,7 @@ Return the collector."
 (defun pop-collector (c)
   "Pop the first value from C
 
-If C is empty, then this will return NI"L
+If C is empty, then this will return NIL"
   (prog1 (pop (car c))
     (when (null (car c))
       (setf (cdr c) nil))))
