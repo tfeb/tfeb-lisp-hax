@@ -452,12 +452,12 @@ The syntax is `(with-vector-accumulator (&rest accumulators) ...)`.  Each accumu
 Here
 
 - `name` is bound to the name of a local function of one argument which will accumulate elements into the vector in order.
-- `for-vector` is an initial value for the vector.  In general it will be mutated unless it is not adjusrable and has zero length.
+- `for-vector` is an initial value for the vector.  In general it will be mutated unless it is not adjustable and has zero length.
 - `start` is the index of the first element to accumulate.
 - `fill-pointer`is a valid fill pointer for the vector.  If it is a vector index, then it will be used as the first index, unless `start` is given.
 - `adjustable`, if true, says the vector should be adjustable.
 - `length` is the initial length of the vector, unless `for-vector` is given.  The default is 8.
-- `extension` says how much to extend the vector by.  It can be a real greater than 1, or a function designator.  If it is a real the new length is computed as `(max (1+ l) (round (* l extension))`, where `l` is the old length.  This ensures the vector actually grows.  If it is a function designator, then the function is called with the old length and should return a new one.  The result of this isn't checked, but it had better be at least one more than the old length.
+- `extension` says how much to extend the vector by.  It can be a real greater than 1, or a function designator.  If it is a real the new length is computed as `(max (1+ l) (round (* l extension))`, where `l` is the old length.  This ensures the vector actually grows.  If it is a function designator, then the function is called with the old length and should return a new one.  The result of this isn't checked, but it had better be at least one more than the old length.  The default is 1.5.
 - `element-type`, if given, specifies the element type of the vector.  If `for-vector` is given it had better have a compatible element type.
 - `finalize`, default true, says to 'finalize' the vector: this means that it is adjusted to have length equal to one more than the last index.
 
@@ -523,7 +523,7 @@ It is tempting to write something like this:
     ...))
 ```
 
-This is oftern slower than the alternative, because `with-vector-accumulators` can't (portably) know that the vector is a `simple-array`[^6] and so can only insert a declaration that it's an array, which typically slows down access a lot.  It can insert a `simple-array` declaration when it makes the array, and neither`fill-pointer` or `adjustable` are given (or are a literal `nil`): in all other cases it will assume just `array`.  If a literal element type is given then it will assume that is correct, even when the array is passed in, and insert a declaration for it.
+This is often slower than the alternative, because `with-vector-accumulators` can't (portably) know that the vector is a `simple-array`[^6] and so can only insert a declaration that it's an array, which typically slows down access a lot.  It can insert a `simple-array` declaration when it makes the array, and neither`fill-pointer` or `adjustable` are given (or are a literal `nil`): in all other cases it will assume just `array`.  If a literal element type is given then it will assume that is correct, even when the array is passed in, and insert a declaration for it.
 
 In my experience arrays which are explicitly adjustable or which have fill pointers suck for performance.  Assuming arrays are contiguous in memory, then `adjust-array` almost certainly has to copy the entire array whenever it's growing an array: any savings from not copying the header are outweighed by the gain from faster element access.
 
@@ -2933,7 +2933,7 @@ The TFEB.ORG Lisp hax are copyright 1989-2025 Tim Bradshaw.  See `LICENSE` for t
 
 [^5]:	Information on Interlisp can be found at [interlisp.org](https://interlisp.org/), and the Interlisp-D reference manual is [here](https://interlisp.org/docs/IRM.pdf) (PDF link).
 
-[^6]:	Note that a `simple-vector` is *not* the same thing as a one-dimensional `simple-array`: a `simplee-vector` is a one-dimensional `simple-array` whose element type is `t`.  `svref` is *not* the way to get fast vector access: `aref` on a suitably-declared `simple-array` is.
+[^6]:	Note that a `simple-vector` is *not* the same thing as a one-dimensional `simple-array`: a `simple-vector` is a one-dimensional `simple-array` whose element type is `t`.  `svref` is therefore *not* the way to get fast vector access: `aref` on a suitably-declared `simple-array` is.
 
 [^7]:	If you are using such an implementation, well, sorry.
 
