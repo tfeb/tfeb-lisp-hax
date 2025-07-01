@@ -86,4 +86,44 @@
     (is eql 3 (pop-collector c))
     (true (collector-empty-p c))))
 
+(define-test ("org.tfeb.hax.collecting" "vector-accumulators")
+  ;; These are fairly limited
+  (is eq
+      (upgraded-array-element-type 'character)
+      (array-element-type (with-vector-accumulators ((s :element-type 'character)))))
+  (let ((s (make-string 2)))
+    ;; Test that it does not gratuitously copy the vector
+    (is eq s (with-vector-accumulators ((s s))
+               (s #\a)
+               (s #\b)))
+    (is string= "ab" s)
+    ;; but it needs to here, and it will mutate s as well
+    (let ((r (with-vector-accumulators ((s s))
+               (s #\x)
+               (s #\y)
+               (s #\z))))
+      (isnt eq s r)
+      (is = 3 (length r))
+      (is string= "xyz" r)
+      (is string= "xy" s)
+      (is eq (array-element-type s) (array-element-type r))))
+  ;; Check extending works
+  (let* ((v (make-array 0 :adjustable t))
+         (r (with-vector-accumulators ((v v)) (v 1))))
+    (is eq v r)
+    (is = 1 (length v)))
+  (let ((v (make-array 2)))
+    ;; This will fail
+    (fail (with-vector-accumulators ((v v :start 10)) (v 1)))
+    ;; But this is oddly OK as it extends by 1: should this be fixed?
+    (finish (with-vector-accumulators ((v v :start 2)) (v 1))))
+  ;; Check we can write into the middle of a vector and not reallocate
+  ;; it or prune it
+  (let* ((v (make-array 10 :initial-element 1))
+         (r (with-vector-accumulators ((v v :start 4 :finalize nil)) (v 2))))
+    (is eq v r)
+    (is = 10 (length r))
+    (is = 2 (aref r 4))))
+
+
 (test "org.tfeb.hax.collecting" :report 'summary)

@@ -8,8 +8,10 @@
 ;; $Id$
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
-;;;; Collecting lists forwards
-;;; This is an old macro cleaned up a bit
+;;;; Collecting lists forwards, and other accumulation macros
+;;;
+
+;;; The original collecting is an old macro cleaned up a bit
 ;;;
 ;;; 2012: I have changed this to use local functions rather than macros,
 ;;; on the assumption that implementations can optimize this pretty well now
@@ -21,14 +23,19 @@
 ;;;
 
 ;;; These macros hardly seem worth copyrighting, but are copyright
-;;; 1989-2012, 2021-2022 by me, Tim Bradshaw, and may be used for any
+;;; 1989-2012, 2021-2025 by me, Tim Bradshaw, and may be used for any
 ;;; purpose whatsoever by anyone. There is no warranty whatsoever. I
 ;;; would appreciate acknowledgement if you use this in anger, and I
 ;;; would also very much appreciate any feedback or bug fixes.
 ;;;
 
+#+org.tfeb.tools.require-module
+(org.tfeb.tools.require-module:needs
+ (:org.tfeb.hax.utilities :compile t))
+
 (defpackage :org.tfeb.hax.collecting
   (:use :cl)
+  (:use :org.tfeb.hax.utilities)
   (:export #:collecting
           #:collect
           #:with-collectors
@@ -40,7 +47,8 @@
           #:nconc-collectors
           #:nconc-collector-onto
           #:pop-collector
-          #:collector-empty-p))
+          #:collector-empty-p
+          #:with-vector-accumulators))
 
 (in-package :org.tfeb.hax.collecting)
 
@@ -354,3 +362,237 @@ If C is empty, then this will return NIL"
 (defun collector-empty-p (c)
   "Return true if the collector C is empty"
   (null (car c)))
+
+;;;; Vector accumulators (try)
+;;;
+;;; This doesn't use org.tfeb.hax.iterate to avoid dragging in things,
+;;; and can't use org.tfeb.dsm because that would be circular.
+;;;
+;;; It's also much hairier than any of the other macros here: perhaps
+;;; it should live somewhere else?
+;;;
+
+(defconstant default-initial-va-length 8)
+(defconstant default-initial-va-extension 1.5)
+
+(defun vector-accumulator-description (fname kws)
+  ;; Return four values:
+  ;; - a list of names of variables for the vector, its initial
+  ;;   length, start position / index, whether it has a fill pointer,
+  ;;   whether it is adjustable, the extension factor and whether this
+  ;;   was given;
+  ;; - a form which will return initial values for these variables;
+  ;; - a declaration form
+  ;; - a list of the arglist & body of a function which will
+  ;;   accumulate an element into the vector
+  (destructuring-bind (&key (for-vector nil)
+                            (start 0 startp)
+                            (fill-pointer nil)
+                            (adjustable nil)
+                            (length default-initial-va-length ilp)
+                            (extension default-initial-va-extension extp)
+                            (element-type (if for-vector '* t)) ;see below
+                            (finalize t))
+      kws
+    (with-names ((<v> (stringify "<" fname "-V>"))
+                 (<l> (stringify "<" fname "-L>"))
+                 (<s> (stringify "<" fname "-S>"))
+                 (<fpp> (stringify "<" fname "-FPP>"))
+                 (<adjp> (stringify "<" fname "-ADJP>"))
+                 (<ext> (stringify "<" fname "-EXT>"))
+                 (<extp> (stringify "<" fname "-EXTP>"))
+                 (<finalize> (stringify "<" fname "-FINALIZE>")))
+      (when (and for-vector (or fill-pointer adjustable ilp))
+        (warn "Shouldn't specify characteristics of provided vector"))
+      (multiple-value-bind (literal-et et-literal-p)
+          (typecase element-type
+            (boolean (values element-type t))
+            (cons
+             (if (eq (first element-type) 'quote)
+                 (values (second element-type) t)
+               (values nil nil)))
+            (t (values nil nil)))
+        (values
+         ;; Variables
+         (list <v> <l> <s> <fpp> <adjp> <ext> <extp> <finalize>)
+         ;; Initialization form
+         (if for-vector
+             ;; We are given the vector
+             `(let* ((,<v> ,for-vector)
+                     (,<fpp> (array-has-fill-pointer-p ,<v>)))
+                (values
+                 ,<v>
+                 (length ,<v>)
+                 ,(if startp
+                      `(if ,<fpp>
+                           (setf (fill-pointer ,<v>) ,start)
+                         ,start)
+                    `(if ,<fpp>
+                         (fill-pointer ,<v>)
+                       ,start))
+                 ,<fpp>
+                 (adjustable-array-p ,<v>)
+                 (let ((ext ,extension))
+                   (typecase ext
+                     (real ext)
+                     (function ext)
+                     (symbol (symbol-function ext))
+                     (t (error "Extension can't be a ~S" (type-of ext)))))
+                 ,extp
+                 ,finalize))
+           ;; We are making the vector
+           (with-names ((<fp> (stringify "<" fname "-FP>")))
+             `(let* ((,<fp> ,fill-pointer)
+                     (,<adjp> ,adjustable)
+                     (,<l> ,length)
+                     (,<v> (make-array ,<l>
+                                       :element-type ,element-type
+                                       :fill-pointer ,<fp>
+                                       :adjustable ,<adjp>)))
+                (values
+                 ,<v>
+                 ,<l>
+                 ,(if startp
+                      `(if ,<fp>
+                           (setf (fill-pointer ,<v>) ,start)
+                         ,start)
+                    `(if ,<fp> (fill-pointer ,<v>) ,start))
+                 ,<fp>
+                 ,<adjp>
+                 (let ((ext ,extension))
+                   (typecase ext
+                     (real ext)
+                     (function ext)
+                     (symbol (symbol-function ext))
+                     (t (error "Extension can't be a ~S" (type-of ext)))))
+                 ,extp
+                 ,finalize))))
+         ;; Declaration
+         `(declare
+           (type (integer 0 ,array-dimension-limit) ,<l>)
+           (type (integer 0 (,array-dimension-limit)) ,<s>)
+           ;; Trust literal element types, otherwise assume *. The
+           ;; array is certainly simple if we made it and there is
+           ;; certainly no fill pointer or adjustability
+           ,(let ((et (if et-literal-p literal-et '*))
+                   (ay (if (not (or for-vector fill-pointer adjustable))
+                           'simple-array 'array)))
+              `(type (,ay ,et (*)) ,<v>))
+           ,@(if (not (or for-vector fill-pointer adjustable))
+                 ;; We'll hit the simple case, and these are unused
+                 `((ignore ,<adjp> ,<extp>))
+               '()))
+         ;; Accumulating function definition
+         (if (not (or for-vector fill-pointer adjustable))
+             ;; Simple, common case.  We could handle intermediate cases but
+             ;; why bother?
+             `((e)
+               ,@(if et-literal-p
+                     `((declare (type ,literal-et e)))
+                   '())
+               (when (>= ,<s> ,<l>)
+                 ;; Must extend
+                 (setf ,<l> (typecase ,<ext>
+                              (real (max (1+ ,<l>) (round (* ,<l> ,<ext>))))
+                              (function (funcall ,<ext> ,<l>)))
+                       ,<v> (adjust-array ,<v> ,<l>)))
+               (setf (aref ,<v> ,<s>) e)
+               (incf ,<s>)
+               e)
+           ;; General case
+           `((e)
+             ,@(if et-literal-p
+                   `((declare (type ,literal-et e)))
+                 '())
+             (cond
+              (,<fpp>
+               ;; fill pointer
+               (cond
+                (,<adjp>
+                 (if ,<extp>
+                     (vector-push-extend e ,<v>
+                                         (- ,<l> (typecase ,<ext>
+                                                   (real (max (1+ ,<l>) (round (* ,<l> ,<ext>))))
+                                                   (function (funcall ,<ext> ,<l>)))))
+                   (vector-push-extend e ,<v>))
+                 (setf ,<l> (length ,<v>)))
+                ((>= ,<s> ,<l>)
+                 (setf ,<l> (typecase ,<ext>
+                              (real (max (1+ ,<l>) (round (* ,<l> ,<ext>))))
+                              (function (funcall ,<ext> ,<l>)))
+                       ,<v> (adjust-array ,<v> ,<l>))
+                 (vector-push e ,<v>))
+                (t
+                 (vector-push e ,<v>))))
+              ((>= ,<s> ,<l>)
+               ;; No fill pointer, past end
+               (setf ,<l> (typecase ,<ext>
+                            (real (max (1+ ,<l>) (round (* ,<l> ,<ext>))))
+                            (function (funcall ,<ext> ,<l>)))
+                     ,<v> (adjust-array ,<v> ,<l>)
+                     (aref ,<v> ,<s>) e))
+              (t
+               ;; No fill pointer, not past end
+               (setf (aref ,<v> ,<s>) e)))
+             (incf ,<s>)
+             e)))))))
+
+(defmacro with-vector-accumulators ((&rest accumulators) &body decls/forms)
+  ;; The macro.  This is too hairy and should perhaps be factored out
+  ;; into some kind of expansion function
+  (if (null accumulators)
+      ;; Trivial case
+      `(locally ,@decls/forms)
+    ;; Real case
+    (multiple-value-bind (varlists initforms decls fnames fdescs)
+        (with-collectors (varlist initform decl fname fdesc)
+          (dolist (accumulator accumulators)
+            (destructuring-bind (fname &rest kws &key &allow-other-keys)
+                (etypecase accumulator
+                  (list
+                   (if (evenp (length accumulator))
+                       (destructuring-bind (n v &rest kws &key &allow-other-keys)
+                           accumulator
+                         `(,n :for-vector ,v ,@kws))
+                     accumulator))
+                  (symbol (list accumulator)))
+              (multiple-value-bind (varlist initform decl fdesc)
+                  (vector-accumulator-description fname kws)
+                (varlist varlist)
+                (initform initform)
+                (decl decl)
+                (fname fname)
+                (fdesc fdesc)))))
+      (labels ((write-bindings (vls-tail ifs-tail decls-tail)
+                 (if (not (null vls-tail))
+                     `(multiple-value-bind ,(first vls-tail) ,(first ifs-tail)
+                        ,(first decls-tail)
+                        ,(write-bindings (rest vls-tail) (rest ifs-tail) (rest decls-tail)))
+                   ;; All done
+                   `(flet ,(mapcar #'cons fnames fdescs)
+                      (declare (inline ,@fnames))
+                      ,@decls/forms
+                      ;; Value-returning form can be hairy
+                      ,(multiple-value-bind (rvs lvs svs fppvs fzvs)
+                           (with-collectors (rv lv sv fppv fzv)
+                             (dolist (varlist varlists)
+                               (destructuring-bind (rv lv sv fppv adjpv
+                                                       extv extpv fzv) varlist
+                                 (declare (ignore adjpv extv extpv))
+                                 (rv rv) (lv lv) (sv sv) (fppv fppv) (fzv fzv))))
+                         `(values ,@(mapcar
+                                     (lambda (rv lv sv fppv fzv)
+                                       `(if ,fzv
+                                            (cond
+                                             ((= ,lv ,sv)
+                                              ,rv)
+                                             (,fppv
+                                              ;; Prefer changing fp
+                                              ;; if we can
+                                              (setf (fill-pointer ,rv) ,sv)
+                                              ,rv)
+                                             (t
+                                              (adjust-array ,rv ,sv)))
+                                          ,rv))
+                                     rvs lvs svs fppvs fzvs)))))))
+        (write-bindings varlists initforms decls)))))

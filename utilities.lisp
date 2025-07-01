@@ -8,6 +8,7 @@
    #:parse-simple-body
    #:with-names
    #:symbolify
+   #:stringify
    #:thunk
    #:thunk*
    #:valid-type-specifier-p
@@ -71,6 +72,12 @@ to be able to provide as many arguments as you need."
               (if (eq where t) *package* where))
       (make-symbol (apply #'concatenate 'string
                           (mapcar #'string things)))))
+
+(defun stringify (&rest things)
+  "Make a string from the contatenated string representations of THINGS"
+  (declare (dynamic-extent things))
+  (apply #'concatenate 'string
+         (mapcar #'string things)))
 
 (defmacro with-names ((&rest clauses) &body forms)
   "Bind a bunch of variables to fresh symbols with the same name

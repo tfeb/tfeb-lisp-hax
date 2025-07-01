@@ -17,6 +17,8 @@ This repo contains a collection of small Common Lisp hacks I've written over the
 	- [Collecting or accumulating multiple values: collecting-values](#collecting-or-accumulating-multiple-values-collecting-values)
 	- [Explicit collectors](#explicit-collectors)
 	- [Notes on explicit collectors](#notes-on-explicit-collectors)
+	- [Accumulating into vectors: with-vector-accumulators](#accumulating-into-vectors-with-vector-accumulators)
+	- [Notes & examples  for with-vector-accumulators](#notes--examples--for-with-vector-accumulators)
 	- [Package, module](#package-module)
 - [Wrapping method combination: wrapping-standard](#wrapping-method-combination-wrapping-standard)
 	- [Performance](#performance)
@@ -438,8 +440,106 @@ The collector objects made by `make-collector` are conses, but I reserve the rig
 
 The optional second argument to `collector-contents` is a bit sneaky but can be really useful.
 
+### Accumulating into vectors: `with-vector-accumulators`
+`with-vector-accumulators` lets you accumulate elements into vectors painlessly.  A simple way of doing this would be to build a list, and then turn that into a suitable vector at the end.  `with-vector-accumulators` doesn't do that: rather it repeatedly adjusts the vector if needed.  That means it may cons a lot more, but it has options which, if you know how big the vector will be, allow you make it pretty quick.
+
+The syntax is `(with-vector-accumulator (&rest accumulators) ...)`.  Each accumulator can be one of three options:
+
+- a symbol, `name`;
+- a list of the form `(name &key for-vector start fill-pointer adjustable length extension element-type finalize)`;
+- a list of the form `(name initial-value &key ...)` which is equivalent to `(name :for-vector initial-value ...)`.
+
+Here
+
+- `name` is bound to the name of a local function of one argument which will accumulate elements into the vector in order.
+- `for-vector` is an initial value for the vector.  In general it will be mutated unless it is not adjusrable and has zero length.
+- `start` is the index of the first element to accumulate.
+- `fill-pointer`is a valid fill pointer for the vector.  If it is a vector index, then it will be used as the first index, unless `start` is given.
+- `adjustable`, if true, says the vector should be adjustable.
+- `length` is the initial length of the vector, unless `for-vector` is given.  The default is 8.
+- `extension` says how much to extend the vector by.  It can be a real greater than 1, or a function designator.  If it is a real the new length is computed as `(max (1+ l) (round (* l extension))`, where `l` is the old length.  This ensures the vector actually grows.  If it is a function designator, then the function is called with the old length and should return a new one.  The result of this isn't checked, but it had better be at least one more than the old length.
+- `element-type`, if given, specifies the element type of the vector.  If `for-vector` is given it had better have a compatible element type.
+- `finalize`, default true, says to 'finalize' the vector: this means that it is adjusted to have length equal to one more than the last index.
+
+`with-vector-accumulators` returns all the accumulators as multiple values.
+
+### Notes & examples  for `with-vector-accumulators`
+A simple case is building a string:
+
+```lisp
+(defun alpha-string-from-stream (s)
+  ;; Just the longest string of alphanumeric chars we can find
+  (with-vector-accumulators ((r :element-type 'character))
+    (do ((c (read-char s nil nil) (read-char s nil nil)))
+        ((or (not c) (not (alphanumericp c))))
+      (r c))))
+```
+
+Another example, on a Unixoid machine, might be to accumulate a given number of random numbers into a vector:
+
+```lisp
+(defun n-random-unsigned-bytes (n)
+  (with-open-file (/dev/random "/dev/random" :element-type '(unsigned-byte 8))
+    (with-vector-accumulators ((byte :element-type '(unsigned-byte 8)
+                                     :length n
+                                     :finalize nil))
+      (dotimes (i n)
+        (byte (read-byte /dev/random))))))
+```
+
+There's no need to finalize the vector because we know how many bytes it will be in advance.
+
+You could of course write the above in the traditional way:
+
+```lisp
+(defun n-random-unsigned-bytes/traditional (n)
+  (with-open-file (/dev/random "/dev/random" :element-type '(unsigned-byte 8))
+    (let ((bytes (make-array n :element-type '(unsigned-byte 8))))
+      (dotimes (i n)
+        (setf (aref bytes i) (read-byte /dev/random)))
+      bytes)))
+```
+
+But there are plenty of times where managing the index explicitly like this is inconvenient and you have no idea how many elements you'll find:
+
+```lisp
+(defun find-integers (tree)
+  ;; For some reason you want a vector
+  (with-vector-accumulators ((found :element-type 'integer))
+    (labels ((findem (it)
+               (typecase it
+                 (integer (found it))
+                 (list
+                  (dolist (e it)
+                    (findem e))))))
+      (findem tree))))
+```
+
+It is tempting to write something like this:
+
+```lisp
+(defun something/reusing-buffer (... &key ... (buffer (make-array ...)))
+  (with-vector-accumulators ((a buffer ...))
+    ...))
+```
+
+This is oftern slower than the alternative, because `with-vector-accumulators` can't (portably) know that the vector is a `simple-array`[^6] and so can only insert a declaration that it's an array, which typically slows down access a lot.  It can insert a `simple-array` declaration when it makes the array, and neither`fill-pointer` or `adjustable` are given (or are a literal `nil`): in all other cases it will assume just `array`.  If a literal element type is given then it will assume that is correct, even when the array is passed in, and insert a declaration for it.
+
+In my experience arrays which are explicitly adjustable or which have fill pointers suck for performance.  Assuming arrays are contiguous in memory, then `adjust-array` almost certainly has to copy the entire array whenever it's growing an array: any savings from not copying the header are outweighed by the gain from faster element access.
+
+Empirically the things that make `with-vector-accumulators` quick are:
+
+- don't pass it a vector but let it make one;
+- don't provide `fill-pointer` or `adjustable` options;
+- tell it the element type as a literal;
+- tell it how many elements you will be accumulating if you know that;
+- if you don't know, play around with extension and initial length;
+- don't finalize if you can avoid it.
+
+Doing these things it's often pretty close in performance to explicit make-a-vector-and-maintain-the-index code.
+
 ### Package, module
-`collecting` lives in `org.tfeb.hax.collecting` and provides `:org.tfeb.hax.collecting`.
+`collecting` lives in `org.tfeb.hax.collecting` and provides `:org.tfeb.hax.collecting`.  It depends on `utilities`.
 
 ## Wrapping method combination: `wrapping-standard`
 The standard CLOS method combination defines several sorts of methods, and prescribes the order in which they get called:
@@ -529,7 +629,7 @@ A long time ago I did some benchmarks of `wrapping-standard` and found no observ
 ## Applicative iteration: `iterate`
 I've always liked Scheme's named-`let` construct.  It's pretty easy to provide a shim around `labels` in CL which is syntactically the same, but since CL doesn't promise to turn tail calls into jumps, it may cause stack overflows.  When I wrote `iterate` I was still using, part of the time, a Symbolics LispM, and they *didn't* turn tail calls into jumps.  So I wrote this little hack which, if it knew that the implementation did not handle tail-call elimination, and if the name of the local function contains `loop` (in any case) will compile 'calls' to it as explicit jumps.  Otherwise it turns them into the obvious `labels` construct.
 
-Well, that's what it used to do: for a while I simply set the flag which controls whether it thinks an implementation supports tail-call elimination unilaterally to true, which means it will always create correct code, even if that code may cause stack overflows on implementations which don't eliminate tail calls[^6].  From 21st August 2021 the old code is now gone altogether (it is still available for inspection in old commits).
+Well, that's what it used to do: for a while I simply set the flag which controls whether it thinks an implementation supports tail-call elimination unilaterally to true, which means it will always create correct code, even if that code may cause stack overflows on implementations which don't eliminate tail calls[^7].  From 21st August 2021 the old code is now gone altogether (it is still available for inspection in old commits).
 
 From March 2023 there are now four variants on this macro which provide various options of evaluation order and stepping.
 
@@ -710,7 +810,7 @@ where all the gensyms that look the same are the same.  Both functions could hav
 `iterate` lives in `org.tfeb.hax.iterate` and provides `:org.tfeb.hax.iterate`.
 
 ## Local dynamic state: `dynamic-state`
-Dynamic binding is something you don't want very often, but you always end up wanting it somewhere: when programming in languages such as Python I've ended up having to reinvent dynamic binding[^7].
+Dynamic binding is something you don't want very often, but you always end up wanting it somewhere: when programming in languages such as Python I've ended up having to reinvent dynamic binding[^8].
 
 But quite often what you really want is not *global* special variables – variables which exist at the top-level – but *local* special variables, which exist only in some dynamic scope.  This is easy to do in CL:
 
@@ -805,7 +905,7 @@ Error: %errs% is not a valid dynamic state variable for with-error-count
 `dynamic-state` lives in `org.tfeb.hax.dynamic-state` and provides `:org.tfeb.hax.dynamic-state`.
 
 ## Memoizing functions: `memoize`
-Memoization is a clever trick invented by Donald Michie[^8], and described in [Wikipedia](https://en.wikipedia.org/wiki/Memoization "Memoization").  By remembering the results of calls to the function, it can hugely increase performance of certain kinds of recursive function.  As an example
+Memoization is a clever trick invented by Donald Michie[^9], and described in [Wikipedia](https://en.wikipedia.org/wiki/Memoization "Memoization").  By remembering the results of calls to the function, it can hugely increase performance of certain kinds of recursive function.  As an example
 
 ```lisp
 (defun fibonacci (n)
@@ -974,7 +1074,7 @@ Because I got annoyed with `(defclass ... ... ... (:metaclass ...))`, there are 
 - `define-final-class` is exactly the same as `defclass` with  a suitable `final-class` metaclass option.
 
 ### A note on the MOP
-`abstract-classes` needs a tiny bit of the MOP.  For most platforms it uses [Closer to MOP](https://github.com/pcostanza/closer-mop "Closer to MOP") to avoid having to have implementation-dependent code.  However for platforms where `closer-mop:standard-class` is not `cl:standard-class`, `defclass` will, by default, create classes whose metaclass is `cl:standard-class`, while the `validate-superclass` methods will refer to `closer-mop:standard-class`[^9]  In the implementations I use where that is true I've relied on the implementation's MOP.  Currently this means LispWorks, although there may be others.
+`abstract-classes` needs a tiny bit of the MOP.  For most platforms it uses [Closer to MOP](https://github.com/pcostanza/closer-mop "Closer to MOP") to avoid having to have implementation-dependent code.  However for platforms where `closer-mop:standard-class` is not `cl:standard-class`, `defclass` will, by default, create classes whose metaclass is `cl:standard-class`, while the `validate-superclass` methods will refer to `closer-mop:standard-class`[^10]  In the implementations I use where that is true I've relied on the implementation's MOP.  Currently this means LispWorks, although there may be others.
 
 ### Package, module
 `abstract-classes` lives in `org.tfeb.hax.abstract-classes` and provides `:org.tfeb.hax.abstract-classes`.
@@ -1305,7 +1405,7 @@ It's a little fiddly in CL to define global functions with non-empty lexical env
       (incf c))))
 ```
 
-Is problematic because the function definition will not generally be known about at compile-time.  It's also ugly, compared with the equivalent in Scheme[^10]:
+Is problematic because the function definition will not generally be known about at compile-time.  It's also ugly, compared with the equivalent in Scheme[^11]:
 
 ```lisp
 (define counter
@@ -1537,7 +1637,7 @@ I thought about using `_` (or symbols with that name) as the 'ignore this bindin
 `binding` lives in `org.tfeb.hax.binding`and provides `:org.tfeb.hax.binding`.  `binding` depends on `collecting` and `iterate` at compile and run time.  If you load it as a module then, if you have [`require-module`](https://github.com/tfeb/tfeb-lisp-tools#requiring-modules-with-searching-require-module "require-module"), it will use that to try and load them if they're not there.  If it can't do that and they're not there you'll get a compile-time error.
 
 ## Special strings: `stringtable`
-`format` has a very useful feature: there is a special format control 'tilde newline' which will cause `format` to skip both the newline and any following whitespace characters[^11].  This makes writing long format control strings much easier, which is useful since format control strings do tend to be long.  You can, then, use `(format nil ...)` as a way of simply creating a string with, if you want, newlines being ignored.
+`format` has a very useful feature: there is a special format control 'tilde newline' which will cause `format` to skip both the newline and any following whitespace characters[^12].  This makes writing long format control strings much easier, which is useful since format control strings do tend to be long.  You can, then, use `(format nil ...)` as a way of simply creating a string with, if you want, newlines being ignored.
 
 I wanted to do something that was both less and more than this: I wanted a way of writing literal strings such that it was possible to, for instance, ignore newlines to help source formatting, but  *without* involving `format` so I didn't have to worry about all the other format controls, or about explicitly trying to make sure `format` got called before runtime to avoid overhead.  I also wanted the possibility of being able to define my own special handlers in such strings, with all of this working at read time.
 
@@ -1678,7 +1778,7 @@ I've talked about things 'being an error' above: in fact in most (I hope all) ca
 
 When `*read-suppress*` is true, then reading a special string will still call its handlers: this is necessary because the handlers can absorb arbitrary characters from the stream.  But the results of the handlers are simply ignored and no string is built.  An alternative would simply be not to call the handlers and assume they are well-behaved, but I decided not to do that.  User-defined handlers should, if need be, notice `*read-suppress*`and behave appropriately, for instance by not building a big list of characters to return when reading is suppressed.
 
-Stringtables are intended to provide a way of reading literal strings with some slightly convenient syntax[^12]: it is *not* a system for, for instance, doing some syntactically-nicer or more extensible version of what `format` does.  There are other things which do that, I'm sure.
+Stringtables are intended to provide a way of reading literal strings with some slightly convenient syntax[^13]: it is *not* a system for, for instance, doing some syntactically-nicer or more extensible version of what `format` does.  There are other things which do that, I'm sure.
 
 Originally the default delimiter for `make-stringtable-readtable` was `#\"`, as it is now .  For a while it was `#\/`, because I worried that `#"..."` would be likely to clash with other hacks,  but  `#/.../` finally seemed too obvious a syntax fir regular expressions to use for this.  You can always choose what you want to have.
 
@@ -1686,7 +1786,7 @@ Originally the default delimiter for `make-stringtable-readtable` was `#\"`, as 
 `stringtable` lives in `org.tfeb.hax.stringtable` and provides `:org.tfeb.hax.stringtable`.  `stringtable` depends on `collecting` and `iterate` at compile and run time.  If you load it as a module then, if you have [`require-module`](https://github.com/tfeb/tfeb-lisp-tools#requiring-modules-with-searching-require-module "require-module"), it will use that to try and load them if they're not there.  If it can't do that and they're not there you'll get a compile-time error.
 
 ## Object accessors: `object-accessors`
-`with-accessors` & `with-slots` are pretty useful macros.  Since `symbol-macrolet` exists it's pretty easy to provide a similar facility for accessor functions for completely arbitrary objects.  That's what `with-object-accessors` does: it does exactly what `with-accessors` does, but for completely arbitrary objects and functions[^13].  As an example:
+`with-accessors` & `with-slots` are pretty useful macros.  Since `symbol-macrolet` exists it's pretty easy to provide a similar facility for accessor functions for completely arbitrary objects.  That's what `with-object-accessors` does: it does exactly what `with-accessors` does, but for completely arbitrary objects and functions[^14].  As an example:
 
 ```lisp
 (defun foo (c)
@@ -1753,7 +1853,7 @@ This avoids recomputing the indices each time.
 `object-accessors` depends on `utilities`, lives in `org.tfeb.hax.object-accessors` and provides `:org.tfeb.hax.object-accessors`.
 
 ## Decomposing iteration: `simple-loops`
-Like a lot of people I have mixed feelings about `loop`.  For a long time I thought that, well, if I wasn't going to use `loop`, I'd need some other elaborate iteration system, although perhaps one which was more principled and extensible such as Richard C Waters' [Series](https://github.com/tfeb/series "Series")[^14].  And I am sure the CL community has invented other tools while I've not been watching.
+Like a lot of people I have mixed feelings about `loop`.  For a long time I thought that, well, if I wasn't going to use `loop`, I'd need some other elaborate iteration system, although perhaps one which was more principled and extensible such as Richard C Waters' [Series](https://github.com/tfeb/series "Series")[^15].  And I am sure the CL community has invented other tools while I've not been watching.
 
 But now I think that this is, perhaps, chasing a mirage: it might be better *not* to have some vast all-encompassing iteration tool, but instead a number of smaller, independent, components.  For a long time I have written
 
@@ -1890,7 +1990,7 @@ This is painful to write.  A really nice solution to this is `destructuring-matc
     ...))
 ```
 
-and of course it's then easy to write `syntax-rules` / `syntax-case` style macros on top of something like this[^15]:
+and of course it's then easy to write `syntax-rules` / `syntax-case` style macros on top of something like this[^16]:
 
 ```lisp
 (define-matching-macro fooing
@@ -2015,7 +2115,7 @@ There arguably should be spread versions of many of these combinators, so if you
 ## Metatronic macros
 Or, recording angel.  From an idea by Zyni.
 
-The usual approach to making CL macros less unhygienic[^16] means they tend to look like:
+The usual approach to making CL macros less unhygienic[^17] means they tend to look like:
 
 ```lisp
 (defmacro ... (...)
@@ -2034,7 +2134,7 @@ Metatronic macros make a lot of this pain go away: just give the symbols you wan
        ,@forms)))
 ```
 
-All that happens is that each symbol whose name looks like `<...>` is rewritten as a gensymized version of itself, with each identical symbol being rewritten to the same thing[^17].  As a special case, symbols whose names are `"<>"` are rewritten as unique gensymized symbols[^18].  The pattern symbols must match is controlled by a 'rewriter' function which can be changed if you don't like the default: see below.
+All that happens is that each symbol whose name looks like `<...>` is rewritten as a gensymized version of itself, with each identical symbol being rewritten to the same thing[^18].  As a special case, symbols whose names are `"<>"` are rewritten as unique gensymized symbols[^19].  The pattern symbols must match is controlled by a 'rewriter' function which can be changed if you don't like the default: see below.
 
 With the above definition
 
@@ -2124,7 +2224,7 @@ This is fine for macros like that, but there's a common style of macro which loo
   (expand-iterate name bindings body nil))
 ```
 
-Where`expand-iterate` is probably some function which expands variations on `iterate`[^19].  Well, the answer is that it's complicated.  But where, in a function like `expand-iterate`, you have code like:
+Where`expand-iterate` is probably some function which expands variations on `iterate`[^20].  Well, the answer is that it's complicated.  But where, in a function like `expand-iterate`, you have code like:
 
 ```lisp
 (let ((secret-name (make-symbol ...)))
@@ -2295,7 +2395,7 @@ If you want to have fine-grained control over log entry formats then two possibl
 - you could make the value of `*log-entry-formatter*` be a generic function which can then dispatch on its second argument to return an appropriate log format;
 - and/or you could define methods on `slog-to` for suitable `log-entry` subclasses which can select entry formats appropriately.
 
-The second approach allows you, for instance, to select locale-specific formats by passing keyword arguments to specify non-default locales to `slog-to`, rather than just relying on its class alone[^20].
+The second approach allows you, for instance, to select locale-specific formats by passing keyword arguments to specify non-default locales to `slog-to`, rather than just relying on its class alone[^21].
 
 ### The `logging` macro
 **`(logging ([(typespec destination ...) ...]) form ...)`** establishes dynamic handlers for log entries which will log to the values of the specified destinations.  Each `typespec` is as for `handler-bind`, except that the type `t` is rewritten as `log-entry`, which makes things easier to write.  Any type mentioned in `typespec` must be a subtype of `log-entry`.  The value of each destination is then found, with special handling for pathnames (see below) and these values are used as the destinations for calls to `slog-to`.  As an example the expansion of the following form:
@@ -2360,7 +2460,7 @@ One important reason for this behaviour of `logging` is to deal with this proble
 
 Because the absolute pathname of `foo.log`is computed and stored at the point of the logging macro you won't end up logging to multiple files: all the log entries will go to whatever the canonical version of `foo.log` was at the point that `logging` appeared.
 
-Finally note that calls to `slog` are completely legal but will do nothing outside the dynamic extent of a `logging` macro[^21], but `slog-to` will work quite happily and will write log entries.  This includes when given pathname arguments: it is perfectly legal to write code which just calls `(slog-to "/my/file.log" "a message")`.  See below on file handling.
+Finally note that calls to `slog` are completely legal but will do nothing outside the dynamic extent of a `logging` macro[^22], but `slog-to` will work quite happily and will write log entries.  This includes when given pathname arguments: it is perfectly legal to write code which just calls `(slog-to "/my/file.log" "a message")`.  See below on file handling.
 
 Note that destinations which correspond to files (pathnames and strings) are opened by `logging`, with any needed directories being created and so on.  This means that if those files *can't* be opened then you'll get an error immediately, rather than on the first call to `slog`.
 
@@ -2646,7 +2746,7 @@ When writing macros it's useful to be able to process declaration specifiers in 
 Things in this system are *probably not stable*.  I want to publish it so other things can rely on it, but its details may change.
 
 ### Terminology
-A `declare` expression[^22] is of the form `(declare <declaration-specifier> ...)`, where a `<declaration-specifier>` is of the form `(<declaration-identifier> ...)`.  A `<declaration-identifier>` is a symbol, which may be the name of a type[^23]: `(<type> ...)` is a shorthand for the canonical `(type <type> ...)`.  There are a number of standard identifiers, and nonstandard ones can be portably declared as valid identifiers.  This terminology is the same as that used in the standard.
+A `declare` expression[^23] is of the form `(declare <declaration-specifier> ...)`, where a `<declaration-specifier>` is of the form `(<declaration-identifier> ...)`.  A `<declaration-identifier>` is a symbol, which may be the name of a type[^24]: `(<type> ...)` is a shorthand for the canonical `(type <type> ...)`.  There are a number of standard identifiers, and nonstandard ones can be portably declared as valid identifiers.  This terminology is the same as that used in the standard.
 
 ### What you can do
 `process-declaration-specifier` lets you call a function on a processed declaration specifier, with the function being handed information which tells it the identifier (canonicalised in the case of type declarations), which variable and function names it applies to if any, and a function which will construct a similar specifier for possibly-different sets of variable or function names or other information.  Other information can be handed to the function.
@@ -2800,17 +2900,18 @@ It is generally never necessary to write methods on `process-declaration-identif
 `process-declarations` lives in and provides `:org.tfeb.hax.process-declarations`.  It needs `utilities` and will attempt to load it if `require-module` is present.
 
 ## Small utilities: `utilities`
-This is used both by other hax and by other code I've written.  Things in this system *may not be stable*: it should be considered mostly-internal.  However, changes to it *are* reflected in the version number of things, since other systems can depend on things in it.
+This is used both by other hax and by other code I've written.  Things in this system *may not be stable*: it should be considered mostly-internal.  However, changes to it *are* reflected in the version number of things, since other systems can depend on things in it.  Almost all of the utilities are thing which help writing macros.
 
 Here is what it currently provides.
 
 - `parse-docstring-body` parses the body of a function with possible documentation and declarations into three values: docstring, list of declarations and remaining forms.  With luck it now dies this correctly (the docstring and declarations can be intermingled).
 - `parse-simple-body` is like `parse-docstring-body` but it does not handle docstrings & only returns two values.
 - `symbolify` makes symbols by concatenating string designators, and optionally interns them.  If its first argument is a package designator, or `t` meaning the value of `*package*`, it will intern the result of concatenating the remaining string designators in that package.  If it is `nil` it will return an uninterned symbol.  This is a slightly odd argument convention but I can't think of a better one.  Example: if `s` is the symbol `foo` then `(symbolify nil s "-P")` will return an uninterned symbol whose name is `FOO-P`.
+- `stringify` is `symbolify` but it just makes strings.  It doesn't have the special first argument, or course: all its arguments are string designators.
 - `with-names` binds variables to uninterned symbols with the same name by default: `(with-names (<foo>) ...)`will bind `<foo>` to a fresh uninterned symbol with name `"<FOO>"`.  `(with-names ((<foo> foo)) ...)` will bind `<foo>` to a fresh uninterned symbol with name `"FOO"`.
 - `thunk` makes anonymous functions with no arguments: `(thunk ...)` is `(lambda () ...)`.
 - `thunk*` makes anonymous functions which take an arbitrary number of arguments and ignore them all.
-- `valid-type-specifier-p` attempts to answer the question 'is something a valid type specifier?'.  It does this, normally[^24], by checking that `(typep nil <thing>)` does not signal an error, which I think is a loophole-free way of answering this question (SBCL, again, says incorrectly that`(subtypep <thing> t)`is true for any `<thing>` which looks even slightly like a type specifier).  There is an optional second argument which is an environment object handed to `typep`: using this lets it answer the question for the compilation environment: see [this CLHS issue](https://www.lispworks.com/documentation/HyperSpec/Issues/iss334.htm "Issue `SUBTYPEP-ENVIRONMENT:ADD-ARG` Summary").
+- `valid-type-specifier-p` attempts to answer the question 'is something a valid type specifier?'.  It does this, normally[^25], by checking that `(typep nil <thing>)` does not signal an error, which I think is a loophole-free way of answering this question (SBCL, again, says incorrectly that`(subtypep <thing> t)`is true for any `<thing>` which looks even slightly like a type specifier).  There is an optional second argument which is an environment object handed to `typep`: using this lets it answer the question for the compilation environment: see [this CLHS issue](https://www.lispworks.com/documentation/HyperSpec/Issues/iss334.htm "Issue `SUBTYPEP-ENVIRONMENT:ADD-ARG` Summary").
 - `canonicalize-declaration-specifier` attempts to turn the shorthand `(<type> ...)` declaration specifier into a canonical `(type <type> ...)`.  It does this using `valid-type-specifier-p`.  Its optional second argument is an environent object passed to `valid-type-specifier-p`.  The spec says that a declaration identifier is 'one of the symbols [...]; *or a symbol which is the name of a type*' [my emphasis.  This means that a declaration specifier like `((integer 0) ...)` is not legal.  Several implementations accept these however, so this function blindly turns such things into type declaration specifiers.  It returns a second value which will be false for one of these, true otherwise.
 
 ### Package, module
@@ -2818,7 +2919,7 @@ The utilities live in and provide `:org.tfeb.hax.utilities`.
 
 ---
 
-The TFEB.ORG Lisp hax are copyright 1989-2024 Tim Bradshaw.  See `LICENSE` for the license.
+The TFEB.ORG Lisp hax are copyright 1989-2025 Tim Bradshaw.  See `LICENSE` for the license.
 
 ---
 
@@ -2832,40 +2933,42 @@ The TFEB.ORG Lisp hax are copyright 1989-2024 Tim Bradshaw.  See `LICENSE` for t
 
 [^5]:	Information on Interlisp can be found at [interlisp.org](https://interlisp.org/), and the Interlisp-D reference manual is [here](https://interlisp.org/docs/IRM.pdf) (PDF link).
 
-[^6]:	If you are using such an implementation, well, sorry.
+[^6]:	Note that a `simple-vector` is *not* the same thing as a one-dimensional `simple-array`: a `simplee-vector` is a one-dimensional `simple-array` whose element type is `t`.  `svref` is *not* the way to get fast vector access: `aref` on a suitably-declared `simple-array` is.
 
-[^7]:	 Fortunately, and a bit surprisingly to me, Python has facilities which let you do this fairly pleasantly.  Something on my todo list is to make this implementation public.
+[^7]:	If you are using such an implementation, well, sorry.
 
-[^8]:	See [* 'Memo' Functions and Machine Learning*](https://doi.org/10.1038%2F218019a0 "'Memo' Functions and Machine Learning"), Donald Michie, Nature 218 (5136): 19–22.  [PDF copy](https://www.cs.utexas.edu/users/hunt/research/hash-cons/hash-cons-papers/michie-memo-nature-1968.pdf "'Memo' Functions and Machine Learning").
+[^8]:	 Fortunately, and a bit surprisingly to me, Python has facilities which let you do this fairly pleasantly.  Something on my todo list is to make this implementation public.
 
-[^9]:	And I was not willing to put in explicit extra methods for `validate-superclass` for `cl:standard-class` since the whole purpose of using Closer to MOP was to avoid that kind of nausea.
+[^9]:	See [* 'Memo' Functions and Machine Learning*](https://doi.org/10.1038%2F218019a0 "'Memo' Functions and Machine Learning"), Donald Michie, Nature 218 (5136): 19–22.  [PDF copy](https://www.cs.utexas.edu/users/hunt/research/hash-cons/hash-cons-papers/michie-memo-nature-1968.pdf "'Memo' Functions and Machine Learning").
 
-[^10]:	In fact, Racket.
+[^10]:	And I was not willing to put in explicit extra methods for `validate-superclass` for `cl:standard-class` since the whole purpose of using Closer to MOP was to avoid that kind of nausea.
 
-[^11]:	Or, optionally, not to skip the newline but to skip any whitespace following it.
+[^11]:	In fact, Racket.
 
-[^12]:	As an example of this, it would be quite possible to define a special handler which meant that, for instance `#/this is ~U+1234+ an arbitrary Unicode character/`would work.
+[^12]:	Or, optionally, not to skip the newline but to skip any whitespace following it.
 
-[^13]:	It's quite possible that `with-accessors` will work for completely arbitrary objects and accessors already of course, but I don't think you can portably rely on this.
+[^13]:	As an example of this, it would be quite possible to define a special handler which meant that, for instance `#/this is ~U+1234+ an arbitrary Unicode character/`would work.
 
-[^14]:	This link is to my own copy.
+[^14]:	It's quite possible that `with-accessors` will work for completely arbitrary objects and accessors already of course, but I don't think you can portably rely on this.
 
-[^15]:	Of course these macros are still not hygenic.
+[^15]:	This link is to my own copy.
 
-[^16]:	I am reasonably sure that fully hygienic macros are not possible in CL without extensions to the language or access to the guts of the implementation.
+[^16]:	Of course these macros are still not hygenic.
 
-[^17]:	So, in particular `foo:<x>` and `bar:<x>` will be rewritten as distinct gensymized versions of themselves.
+[^17]:	I am reasonably sure that fully hygienic macros are not possible in CL without extensions to the language or access to the guts of the implementation.
 
-[^18]:	So `(apply #'eq (metatronize '(<x> <x>)))` is true but `(apply #'eq (metatronize '(<> <>)))` is false.
+[^18]:	So, in particular `foo:<x>` and `bar:<x>` will be rewritten as distinct gensymized versions of themselves.
 
-[^19]:	This is in fact how `iterate` and `iterate*` work now, with `iterating` and `iterating*` sharing another expansion function.
+[^19]:	So `(apply #'eq (metatronize '(<x> <x>)))` is true but `(apply #'eq (metatronize '(<> <>)))` is false.
 
-[^20]:	An interim version of `slog` had a generic function, `log-entry-formatter` which was involved in this process with the aim of being able to select formats more flexibly, but it did not in fact add any useful flexibility.
+[^20]:	This is in fact how `iterate` and `iterate*` work now, with `iterating` and `iterating*` sharing another expansion function.
 
-[^21]:	Well: you could write your own `handler-bind` / `handler-case` forms, but don't do that.
+[^21]:	An interim version of `slog` had a generic function, `log-entry-formatter` which was involved in this process with the aim of being able to select formats more flexibly, but it did not in fact add any useful flexibility.
 
-[^22]:	All of this applies to `proclaim` and `declaim` as well.
+[^22]:	Well: you could write your own `handler-bind` / `handler-case` forms, but don't do that.
 
-[^23]:	Some implementations allow non-atomic type specifiers: this is not strictly conforming but supported by this code.
+[^23]:	All of this applies to `proclaim` and `declaim` as well.
 
-[^24]:	SBCL has its own version of this function, so that's used for SBCL.
+[^24]:	Some implementations allow non-atomic type specifiers: this is not strictly conforming but supported by this code.
+
+[^25]:	SBCL has its own version of this function, so that's used for SBCL.
