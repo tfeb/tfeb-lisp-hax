@@ -31,8 +31,7 @@
     :depends-on ("collecting" "iterate"))
    (:file "object-accessors"
     :depends-on ("utilities"))
-   (:file "utilities"
-    :depends-on ("collecting" "iterate"))
+   (:file "utilities")
    (:file "simple-loops"
     :depends-on ("collecting" "iterate" "utilities"))
    (:file "spam"
