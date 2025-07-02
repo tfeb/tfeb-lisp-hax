@@ -12,7 +12,8 @@
   :depends-on (#-LispWorks "closer-mop")
   :in-order-to ((test-op (load-op "org.tfeb.hax/test")))
   :components
-  ((:file "collecting")
+  ((:file "collecting"
+    :depends-on ("utilities"))
    (:file "wrapping-standard")
    (:file "iterate")
    (:file "dynamic-state")
