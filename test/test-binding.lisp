@@ -79,4 +79,7 @@
       (symbol-macrolet ((a 2))
         a)))))
 
-(test "org.tfeb.hax.binding" :report 'summary)
+(let ((result (test "org.tfeb.hax.binding" :report 'summary)))
+  (when (eq (status result) ':failed)
+    (error "Tests for binding failed"))
+  result)

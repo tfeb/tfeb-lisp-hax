@@ -36,4 +36,7 @@
       (= 1)
       (= 2))))
 
-(test "org.tfeb.hax.metatronic" :report 'summary)
+(let ((result (test "org.tfeb.hax.metatronic" :report 'summary)))
+  (when (eq (status result) ':failed)
+    (error "Tests for metatronic failed" result))
+  result)

@@ -43,4 +43,7 @@
     (equal '((declare 1) (declare 2)))
     (equal '())))
 
-(test "org.tfeb.hax.utilities" :report 'summary)
+(let ((result (test "org.tfeb.hax.utilities" :report 'summary)))
+  (when (eq (status result) ':failed)
+    (error "Tests for utilities failed"))
+  result)

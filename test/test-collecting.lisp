@@ -126,4 +126,7 @@
     (is = 2 (aref r 4))))
 
 
-(test "org.tfeb.hax.collecting" :report 'summary)
+(let ((result (test "org.tfeb.hax.collecting" :report 'summary)))
+  (when (eq (status result) ':failed)
+    (error "Tests for collecting failed" result))
+  result)

@@ -116,4 +116,7 @@
     (= 10)
     (= 8)))
 
-(test "org.tfeb.hax.iterate" :report 'summary)
+(let ((result (test "org.tfeb.hax.iterate" :report 'summary)))
+  (when (eq (status result) ':failed)
+    (error "Tests for iterate failed" result))
+  result)

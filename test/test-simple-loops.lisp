@@ -70,4 +70,7 @@
                             ((k) i))
             (return t))))
 
-(test "org.tfeb.hax.simple-loops" :report 'summary)
+(let ((result (test "org.tfeb.hax.simple-loops" :report 'summary)))
+  (when (eq (status result) ':failed)
+    (error "Tests for simple loops failed" result))
+  result)

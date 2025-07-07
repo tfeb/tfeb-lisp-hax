@@ -66,4 +66,7 @@
     (fail (let-values* (((a) (f 2))) a))
     (finish (let-values* (((a b) (f 2))) (values a b)))))
 
-(test "org.tfeb.hax.let-values" :report 'summary)
+(let ((result (test "org.tfeb.hax.let-values" :report 'summary)))
+  (when (eq (status result) ':failed)
+    (error "Tests for let-values failed" result))
+  result)
