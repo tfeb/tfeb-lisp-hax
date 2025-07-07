@@ -375,7 +375,7 @@ If C is empty, then this will return NIL"
 (defconstant default-initial-va-length 8)
 (defconstant default-initial-va-extension 1.5)
 
-(defun vector-accumulator-description (fname kws)
+(defun vector-accumulator-description (fname kws environment)
   ;; Return four values:
   ;; - a list of names of variables for the vector, its initial
   ;;   length, start position / index, whether it has a fill pointer,
@@ -392,7 +392,8 @@ If C is empty, then this will return NIL"
                             (length default-initial-va-length ilp)
                             (extension default-initial-va-extension extp)
                             (element-type (if for-vector '* t)) ;see below
-                            (finalize t))
+                            (finalize t)
+                            (simple nil))
       kws
     (with-names ((<v> (stringify "<" fname "-V>"))
                  (<l> (stringify "<" fname "-L>"))
@@ -475,7 +476,11 @@ If C is empty, then this will return NIL"
            ;; array is certainly simple if we made it and there is
            ;; certainly no fill pointer or adjustability
            ,(let ((et (if et-literal-p literal-et '*))
-                   (ay (if (not (or for-vector fill-pointer adjustable))
+                   (ay (if (or (and (not for-vector)
+                                    (not (or fill-pointer adjustable)))
+                               (and for-vector
+                                    (constantp simple environment)
+                                    simple))
                            'simple-array 'array)))
               `(type (,ay ,et (*)) ,<v>))
            ,@(if (not (or for-vector fill-pointer adjustable))
@@ -537,7 +542,8 @@ If C is empty, then this will return NIL"
              (incf ,<s>)
              e)))))))
 
-(defmacro with-vector-accumulators ((&rest accumulators) &body decls/forms)
+(defmacro with-vector-accumulators ((&rest accumulators) &body decls/forms
+                                    &environment environment)
   ;; The macro.  This is too hairy and should perhaps be factored out
   ;; into some kind of expansion function
   (if (null accumulators)
@@ -557,7 +563,7 @@ If C is empty, then this will return NIL"
                      accumulator))
                   (symbol (list accumulator)))
               (multiple-value-bind (varlist initform decl fdesc)
-                  (vector-accumulator-description fname kws)
+                  (vector-accumulator-description fname kws environment)
                 (varlist varlist)
                 (initform initform)
                 (decl decl)
