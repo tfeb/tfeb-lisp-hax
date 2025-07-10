@@ -18,7 +18,7 @@ This repo contains a collection of small Common Lisp hacks I've written over the
 	- [Explicit collectors](#explicit-collectors)
 	- [Notes on explicit collectors](#notes-on-explicit-collectors)
 	- [Accumulating into vectors: with-vector-accumulators](#accumulating-into-vectors-with-vector-accumulators)
-	- [The element-type and simple arguments](#the-element-type-and-simple-arguments)
+	- [The element-type and simple options for with-vector-accumulators](#the-element-type-and-simple-options-for-with-vector-accumulators)
 	- [Notes & examples  for with-vector-accumulators](#notes--examples--for-with-vector-accumulators)
 	- [Package, module](#package-module)
 - [Wrapping method combination: wrapping-standard](#wrapping-method-combination-wrapping-standard)
@@ -459,13 +459,13 @@ Here
 - `adjustable`, if true, says the vector should be adjustable.
 - `length` is the initial length of the vector, unless `for-vector` is given.  The default is 8.
 - `extension` says how much to extend the vector by.  It can be a real greater than 1, or a function designator.  If it is a real the new length is computed as `(max (1+ l) (round (* l extension))`, where `l` is the old length.  This ensures the vector actually grows.  If it is a function designator, then the function is called with the old length and should return a new one.  The result of this isn't checked, but it had better be at least one more than the old length.  The default is 1.5.
-- `element-type`specifies the element type of the vector. See [below](#the-element-type-and-simple-arguments "The element-type and simple arguments")
-- `simple`says that the array is simple.  See [below](#the-element-type-and-simple-arguments "The element-type and simple arguments").
+- `element-type`specifies the element type of the vector. See [below](#the-element-type-and-simple-options-for-with-vector-accumulators "The element-type and simple options for with-vector-accumulators")
+- `simple`says that the array is simple.  See [below](#the-element-type-and-simple-options-for-with-vector-accumulators "The element-type and simple options for with-vector-accumulators").
 - `finalize`, default true, says to 'finalize' the vector: this means that it is adjusted to have length equal to one more than the last index.
 
 `with-vector-accumulators` returns all the accumulators as multiple values.
 
-### The `element-type` and `simple` arguments
+### The `element-type` and `simple` options for `with-vector-accumulators`
 These two arguments can be used to improve declarations.  But if you give them in such a way that they have an effect, *they will be trusted*: it's then up to you to make sure that things actually are what is assumed.
 
 **`element-type`**, if given as a quoted expression, will cause array types to be declared as having that element type, and the local function's argument to be appropriately declared.  For instance `(with-vector-accumulators ((a :element-type 'fixnum)) ...)` will result in arrays being declared to have type `(simple-array fixnum (*))` and the local function's argument will be declared to be a `fixnum`.   This argument only does anything if its value is a quoted expression as it's used at macroexpansion time, obviously.
